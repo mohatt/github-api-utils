@@ -4,8 +4,6 @@ namespace Github\Utils;
 
 /**
  * Interface for a GithubTokenPool.
- *
- * @package AwesomeHub
  */
 interface GithubTokenPoolInterface
 {
@@ -20,7 +18,7 @@ interface GithubTokenPoolInterface
      * Sets the pool tokens.
      *
      * @param Token\GithubTokenInterface[]|array[] $tokens
-     * @param bool $purge
+     * @param bool                                 $purge
      */
     public function setTokens(array $tokens, $purge = false);
 
@@ -35,6 +33,7 @@ interface GithubTokenPoolInterface
      * Gets a token for the given {$scope}.
      *
      * @param string $scope
+     *
      * @return Token\GithubTokenInterface
      */
     public function getToken($scope);
@@ -43,7 +42,8 @@ interface GithubTokenPoolInterface
      * Marks the current {$scope} token as expired and gets a new one from the pool.
      *
      * @param string $scope
-     * @param int $reset Expired token reset time
+     * @param int    $reset Expired token reset time
+     *
      * @return Token\GithubTokenInterface
      */
     public function nextToken($scope, $reset);

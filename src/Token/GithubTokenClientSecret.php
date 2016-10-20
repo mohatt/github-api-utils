@@ -4,8 +4,6 @@ namespace Github\Utils\Token;
 
 /**
  * Represents a client id/secret token.
- *
- * @package AwesomeHub
  */
 class GithubTokenClientSecret extends GithubTokenAbstract implements GithubTokenClientSecretInterface
 {
@@ -34,11 +32,11 @@ class GithubTokenClientSecret extends GithubTokenAbstract implements GithubToken
     {
         $this->client = $client;
         $this->secret = $secret;
-        $this->id = md5($this->client . $this->secret);
+        $this->id = md5($this->client.$this->secret);
     }
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function getId($short = false)
     {
@@ -46,7 +44,7 @@ class GithubTokenClientSecret extends GithubTokenAbstract implements GithubToken
     }
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function getClientID()
     {
@@ -54,7 +52,7 @@ class GithubTokenClientSecret extends GithubTokenAbstract implements GithubToken
     }
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function getClientSecret()
     {

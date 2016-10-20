@@ -7,8 +7,6 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Interface for a GithubWrapper.
- *
- * @package AwesomeHub
  */
 interface GithubWrapperInterface
 {
@@ -73,8 +71,9 @@ interface GithubWrapperInterface
      * Calls an API method identified by a given path.
      *
      * @param string $path Path to an API method
-     * @param array $args Arguments for that method
-     * @param bool $full Causes the method to fetch all results not just the first page
+     * @param array  $args Arguments for that method
+     * @param bool   $full Causes the method to fetch all results not just the first page
+     *
      * @return mixed
      */
     public function api($path, array $args = [], $full = false);

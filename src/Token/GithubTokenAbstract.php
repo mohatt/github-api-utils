@@ -10,20 +10,21 @@ abstract class GithubTokenAbstract implements GithubTokenInterface
     protected $reset = [];
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function canAccess($scope)
     {
-        if(!isset($this->reset[$scope])){
+        if (!isset($this->reset[$scope])) {
             return true;
         }
 
         $diff = $this->reset[$scope] - time();
+
         return $diff > 0 ? $diff : true;
     }
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function setReset($scope, $reset)
     {

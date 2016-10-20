@@ -4,8 +4,6 @@ namespace Github\Utils\Token;
 
 /**
  * Represents a basic token with username and password.
- *
- * @package AwesomeHub
  */
 class GithubTokenBasic extends GithubTokenAbstract implements GithubTokenBasicInterface
 {
@@ -34,11 +32,11 @@ class GithubTokenBasic extends GithubTokenAbstract implements GithubTokenBasicIn
     {
         $this->username = $username;
         $this->password = $password;
-        $this->id = md5($this->username . $this->password);
+        $this->id = md5($this->username.$this->password);
     }
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function getId($short = false)
     {
@@ -46,7 +44,7 @@ class GithubTokenBasic extends GithubTokenAbstract implements GithubTokenBasicIn
     }
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function getUsername()
     {
@@ -54,7 +52,7 @@ class GithubTokenBasic extends GithubTokenAbstract implements GithubTokenBasicIn
     }
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function getPassword()
     {

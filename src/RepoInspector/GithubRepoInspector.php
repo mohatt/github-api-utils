@@ -12,13 +12,11 @@ use Github\Utils\GithubWrapperInterface;
 
 /**
  * Statistical analysis tool for github repositories.
- *
- * @package AwesomeHub
  */
 class GithubRepoInspector implements GithubRepoInspectorInterface
 {
     /**
-     * Scores calculation constants
+     * Scores calculation constants.
      */
     const R_HOT_DAYS = 7;
     const R_HOT_GRAVITY = 1.8;
@@ -44,7 +42,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     /**
      * Constructor.
      *
-     * @param GithubWrapperInterface $github
+     * @param GithubWrapperInterface       $github
      * @param HttpClient|HttpMethodsClient $http
      */
     public function __construct(GithubWrapperInterface $github, HttpClient $http = null)
@@ -52,13 +50,13 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $this->github = $github;
 
         $this->http = $http ?: HttpClientDiscovery::find();
-        if(!$this->http instanceof HttpMethodsClient){
+        if (!$this->http instanceof HttpMethodsClient) {
             $this->http = new HttpMethodsClient($this->http, MessageFactoryDiscovery::find());
         }
     }
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function inspect($author, $name)
     {
@@ -76,16 +74,14 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $branches = $htmlStats['branches'];
             $releases = $htmlStats['releases'];
             $contributors = $htmlStats['contributors'];
-        }
-        catch(GithubAPIException $e){
+        } catch (GithubAPIException $e) {
             throw new Exception\RepoInspectorAPIException(sprintf('Github API request failed; %s', $e->getMessage()), 0, $e);
-        }
-        catch (\Exception $e) {
+        } catch (\Exception $e) {
             throw new Exception\RepoInspectorCrawlerException(sprintf('Github repo stats request failed; %s', $e->getMessage()), 0, $e);
         }
 
-        $tdCreatedDays  = (time() - strtotime($repo['created_at'])) / 86400;
-        $tdPushedHours  = (time() - strtotime($repo['pushed_at'])) / 3600;
+        $tdCreatedDays = (time() - strtotime($repo['created_at'])) / 86400;
+        $tdPushedHours = (time() - strtotime($repo['pushed_at'])) / 3600;
 
         // Popularity score
         $popularity = (($repo['stargazers_count'] * self::R_POP_STARS_FACTOR)
@@ -97,28 +93,27 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
                 / pow($tdCreatedDays + self::R_HOT_DAYS, self::R_HOT_GRAVITY) * 10000;
 
         // Maturity score
-        $maturity  = ($commits * self::R_MATURITY_COMMITS_FACTOR)
+        $maturity = ($commits * self::R_MATURITY_COMMITS_FACTOR)
                     + ($releases * self::R_MATURITY_RELEASES_FACTOR)
                     + ($contributors * self::R_MATURITY_CONTRIBS_FACTOR)
                     + (($repo['size'] / 1000) * self::R_MATURITY_SIZE_FACTOR);
-        $maturity += sqrt($maturity) * 2 * ($tdCreatedDays/30/12);
-
+        $maturity += sqrt($maturity) * 2 * ($tdCreatedDays / 30 / 12);
 
         // Activity score
         $partScore = 0;
         $partWeeks = 0;
         foreach ($participation['all'] as $partCommits) {
-            $partScore += $partCommits/self::R_ACTIVITY_WEEK_MIN;
-            if($commits > 0){
-                $partWeeks++;
+            $partScore += $partCommits / self::R_ACTIVITY_WEEK_MIN;
+            if ($commits > 0) {
+                ++$partWeeks;
             }
         }
         // weeks prior to repo creation
-        $gift = 52 - ceil(min($tdCreatedDays/7, 52));
+        $gift = 52 - ceil(min($tdCreatedDays / 7, 52));
         // optimal is 52*52 => 2704
-        $activity  = ($partScore+$gift) * ($partWeeks+$gift);
+        $activity = ($partScore + $gift) * ($partWeeks + $gift);
         // optimal here is 2929 (if the repo was pushed within the last 12 hours)
-        $activity += $activity/max(12, $tdPushedHours);
+        $activity += $activity / max(12, $tdPushedHours);
 
         $scores = [
             // PHAM score
@@ -131,12 +126,12 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $scores_avg = (int) round(array_sum($scores) / count($scores));
 
         return array_merge($this->cleanRepoResponse($repo), [
-            'commits_count'         => $commits,
-            'branches_count'        => $branches,
-            'releases_count'        => $releases,
-            'contributers_count'    => $contributors,
-            'scores'                => $scores,
-            'scores_avg'            => $scores_avg,
+            'commits_count' => $commits,
+            'branches_count' => $branches,
+            'releases_count' => $releases,
+            'contributers_count' => $contributors,
+            'scores' => $scores,
+            'scores_avg' => $scores_avg,
         ]);
     }
 
@@ -144,6 +139,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      * Fetchs some repo stats from the repo html page (to save API quota).
      *
      * @param $url
+     *
      * @return array
      */
     protected function getHtmlStats($url)
@@ -151,25 +147,23 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         try {
             $html = $this->http->get($url);
             $html = (string) $html->getBody();
-        }
-        catch (\Exception $e){
-            throw new \RuntimeException(sprintf("Unable too fecth repo page %s", $url));
+        } catch (\Exception $e) {
+            throw new \RuntimeException(sprintf('Unable too fecth repo page %s', $url));
         }
 
         try {
             $crawler = new DomCrawler\Crawler($html);
             $nums = [
-                'commits'       => $crawler->filter('.numbers-summary li:nth-child(1) .num')->text(),
-                'branches'      => $crawler->filter('.numbers-summary li:nth-child(2) .num')->text(),
-                'releases'      => $crawler->filter('.numbers-summary li:nth-child(3) .num')->text(),
-                'contributors'  => $crawler->filter('.numbers-summary li:nth-child(4) .num')->text(),
+                'commits' => $crawler->filter('.numbers-summary li:nth-child(1) .num')->text(),
+                'branches' => $crawler->filter('.numbers-summary li:nth-child(2) .num')->text(),
+                'releases' => $crawler->filter('.numbers-summary li:nth-child(3) .num')->text(),
+                'contributors' => $crawler->filter('.numbers-summary li:nth-child(4) .num')->text(),
             ];
-        }
-        catch (\Exception $e){
-            throw new \RuntimeException(sprintf("Unable too parse repo page %s; %s", $url, $e->getMessage()));
+        } catch (\Exception $e) {
+            throw new \RuntimeException(sprintf('Unable too parse repo page %s; %s', $url, $e->getMessage()));
         }
 
-        $nums = array_map(function($text){
+        $nums = array_map(function ($text) {
             return (int) preg_replace('/[^0-9]/', '', $text);
         }, $nums);
 
@@ -180,6 +174,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      * Cleans repo json data received from the API.
      *
      * @param array $json
+     *
      * @return array
      */
     protected function cleanRepoResponse(array $json)
@@ -188,7 +183,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             if (is_array($v)) {
                 $json[$k] = $this->cleanRepoResponse($v);
             } else {
-                if($k === 'html_url'){
+                if ($k === 'html_url') {
                     $json['url'] = $v;
                     unset($json[$k]);
                 }

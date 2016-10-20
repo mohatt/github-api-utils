@@ -4,8 +4,6 @@ namespace Github\Utils\Token;
 
 /**
  * Interface for a GithubTokenClientSecret.
- *
- * @package AwesomeHub
  */
 interface GithubTokenClientSecretInterface extends GithubTokenInterface
 {
