@@ -360,6 +360,6 @@ class GithubWrapper implements GithubWrapperInterface
             return;
         }
 
-        throw new \UnexpectedValueException(sprintf('Unsupported token provided of type %s', gettype($token)));
+        throw new \UnexpectedValueException(sprintf("Unsupported token provided of type '%s'", get_class($token)));
     }
 }

@@ -4,51 +4,31 @@ namespace Github\Utils;
 
 use Github\Utils\Token\GithubTokenInterface;
 use Github\Utils\Token\GithubTokenNull;
-use Github\Utils\Token\GithubTokenBasic;
-use Github\Utils\Token\GithubTokenClientSecret;
 
 /**
  * Stores and rotates Github tokens.
  */
 class GithubTokenPool implements GithubTokenPoolInterface
 {
-    const TOKEN_NULL = 'null';
-    const TOKEN_BASIC = 'basic';
-    const TOKEN_OAUTH_URL = 'oauth_url';
-
-    const SUPPORTS = [
-        self::TOKEN_NULL,
-        self::TOKEN_BASIC,
-        self::TOKEN_OAUTH_URL,
-    ];
-
     /**
      * @var string
      */
     protected $pool;
 
     /**
-     * @var array[GithubTokenInterface]
+     * @var array[$scope: Token\GithubTokenInterface]
      */
     protected $current = [];
 
     /**
      * Constructor.
      *
-     * @param string                         $pool   Pool file path
-     * @param GithubTokenInterface[]|array[] $tokens Initial tokens as list of token instance or token array definitions
-     * @param bool                           $null   Whether or not to add a 'Null' token at the end of the chain,
-     *                                               this will usually allow unauthenticated requests
+     * @param string                 $pool   Pool file path
+     * @param GithubTokenInterface[] $tokens Initial tokens as list of token instance
      */
-    public function __construct($pool, array $tokens = [], $null = true)
+    public function __construct($pool, array $tokens = [])
     {
         $this->pool = $pool;
-
-        if ($null) {
-            $tokens[] = [
-                self::TOKEN_NULL,
-            ];
-        }
 
         if (count($tokens) > 0) {
             $this->setTokens($tokens, false);
@@ -68,10 +48,6 @@ class GithubTokenPool implements GithubTokenPoolInterface
      */
     public function setTokens(array $tokens, $purge = false)
     {
-        if (!empty($tokens)) {
-            $tokens = $this->verify($tokens);
-        }
-
         if ($purge) {
             $this->write($tokens);
 
@@ -137,53 +113,6 @@ class GithubTokenPool implements GithubTokenPoolInterface
         $this->merge([$token], true);
 
         return $this->getToken($scope);
-    }
-
-    /**
-     * Verifies input tokens.
-     *
-     * @param array $tokens
-     *
-     * @return GithubTokenInterface[]
-     */
-    protected function verify(array $tokens)
-    {
-        $instances = [];
-        foreach ($tokens as $token) {
-            if ($token instanceof GithubTokenInterface) {
-                $instances[$token->getId()] = $token;
-                continue;
-            }
-
-            if (empty($token[0])) {
-                throw new \UnexpectedValueException(sprintf(
-                    "Expected an instance of 'GithubTokenInterface' or an array with at least 1 elements, got '%s'",
-                    var_export($token, true)
-                ));
-            }
-
-            switch ($token[0]) {
-                case self::TOKEN_NULL:
-                    $instance = new GithubTokenNull();
-                    break;
-
-                case self::TOKEN_BASIC:
-                    $instance = new GithubTokenBasic($token[1], $token[2]);
-                    break;
-
-                case self::TOKEN_OAUTH_URL:
-                    $instance = new GithubTokenClientSecret($token[1], $token[2]);
-                    break;
-
-                default:
-                    throw new \UnexpectedValueException(sprintf("Unsupported github token type '%s'", $token[0]));
-            }
-
-            // Preventing duplicate instances
-            $instances[$instance->getId()] = $instance;
-        }
-
-        return array_values($instances);
     }
 
     /**
