@@ -103,15 +103,20 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $partScore = 0;
         $partWeeks = 0;
         foreach ($participation['all'] as $partCommits) {
-            $partScore += $partCommits / self::R_ACTIVITY_WEEK_MIN;
-            if ($commits > 0) {
+            if ($partCommits > 0) {
+                $partScore += $partCommits / self::R_ACTIVITY_WEEK_MIN;
                 ++$partWeeks;
             }
         }
         // weeks prior to repo creation
         $gift = 52 - ceil(min($tdCreatedDays / 7, 52));
+        $giftValue = min($partScore/$partWeeks, 0.5);
+        // Adjust the gift value for low activity repos
+        if($partWeeks < 8){
+            $giftValue = min($giftValue, 0.2);
+        }
         // optimal is 52*52 => 2704
-        $activity = ($partScore + $gift) * ($partWeeks + $gift);
+        $activity = ($partScore + ($gift * $giftValue)) * ($partWeeks + $gift);
         // optimal here is 2929 (if the repo was pushed within the last 12 hours)
         $activity += $activity / max(12, $tdPushedHours);
 
