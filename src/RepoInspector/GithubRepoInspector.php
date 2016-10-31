@@ -23,10 +23,10 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     const R_POP_STARS_FACTOR = 1.5;
     const R_POP_SUBSCRIBERS_FACTOR = 1.6;
     const R_POP_FORKS_FACTOR = 1.7;
-    const R_MATURITY_COMMITS_FACTOR = 1.2;
+    const R_MATURITY_COMMITS_FACTOR = 1.0;
     const R_MATURITY_RELEASES_FACTOR = 1.5;
     const R_MATURITY_CONTRIBS_FACTOR = 1.7;
-    const R_MATURITY_SIZE_FACTOR = 1.2;
+    const R_MATURITY_SIZE_FACTOR = 1.0;
     const R_ACTIVITY_WEEK_MIN = 15;
 
     /**
@@ -131,7 +131,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             'm' => (int) round($maturity),
         ];
 
-        $scores_avg = (int) round(array_sum($scores) / count($scores));
+        $scores_avg = (int) round(($scores['p'] + $scores['a'] + $scores['m']) / 3);
 
         return array_merge($this->cleanRepoResponse($repo), [
             'commits_count' => $commits,
