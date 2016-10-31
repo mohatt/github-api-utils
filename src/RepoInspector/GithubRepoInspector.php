@@ -23,9 +23,9 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     const R_POP_STARS_FACTOR = 1.5;
     const R_POP_SUBSCRIBERS_FACTOR = 1.6;
     const R_POP_FORKS_FACTOR = 1.7;
-    const R_MATURITY_COMMITS_FACTOR = 1.0;
+    const R_MATURITY_COMMITS_FACTOR = 1.2;
     const R_MATURITY_RELEASES_FACTOR = 1.5;
-    const R_MATURITY_CONTRIBS_FACTOR = 1.7;
+    const R_MATURITY_CONTRIBS_FACTOR = 1.6;
     const R_MATURITY_SIZE_FACTOR = 1.0;
     const R_ACTIVITY_WEEK_MIN = 15;
 
@@ -93,11 +93,11 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
                 / pow($tdCreatedDays + self::R_HOT_DAYS, self::R_HOT_GRAVITY) * 10000;
 
         // Maturity score
-        $maturity = ($commits * self::R_MATURITY_COMMITS_FACTOR)
-                    + ($releases * self::R_MATURITY_RELEASES_FACTOR)
-                    + ($contributors * self::R_MATURITY_CONTRIBS_FACTOR)
+        $maturity = (log($commits) * sqrt($commits) * self::R_MATURITY_COMMITS_FACTOR)
+                    + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
+                    + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR)
                     + (($repo['size'] / 1000) * self::R_MATURITY_SIZE_FACTOR);
-        $maturity += sqrt($maturity) * 2 * ($tdCreatedDays / 30 / 12);
+        $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedDays / 30 / 12);
 
         // Activity score
         $partScore = 0;
