@@ -25,13 +25,4 @@ interface GithubTokenFactoryInterface
      * @return bool|array
      */
     public static function supports($type = null);
-
-    /**
-     * Gets a list of supported artifacts or checks whether the given artifact is supported.
-     *
-     * @param string $artifact An artifact to check against
-     *
-     * @return array
-     */
-    public static function artifacts($artifact = null);
 }

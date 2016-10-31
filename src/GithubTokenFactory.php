@@ -17,12 +17,6 @@ class GithubTokenFactory implements GithubTokenFactoryInterface
         self::TOKEN_CLIENT_SECRET,
     ];
 
-    private static $artifacts = [
-        Token\GithubTokenNull::class,
-        Token\GithubTokenBasic::class,
-        Token\GithubTokenClientSecret::class,
-    ];
-
     /**
      * {@inheritdoc}
      */
@@ -77,17 +71,5 @@ class GithubTokenFactory implements GithubTokenFactoryInterface
         }
 
         return in_array($type, self::$supports, true);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public static function artifacts($artifact = null)
-    {
-        if (null === $artifact) {
-            return self::$artifacts;
-        }
-
-        return in_array($artifact, self::$artifacts, true);
     }
 }
