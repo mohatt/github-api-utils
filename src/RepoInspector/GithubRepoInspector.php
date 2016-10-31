@@ -110,10 +110,13 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         }
         // weeks prior to repo creation
         $gift = 52 - ceil(min($tdCreatedDays / 7, 52));
-        $giftValue = min($partScore/$partWeeks, 0.5);
-        // Adjust the gift value for low activity repos
-        if($partWeeks < 8){
-            $giftValue = min($giftValue, 0.2);
+        $giftValue = 0;
+        if($partWeeks > 0){
+            $giftValue = min($partScore/$partWeeks, 0.5);
+            // Adjust the gift value for low activity repos
+            if($partWeeks < 8){
+                $giftValue = min($giftValue, 0.2);
+            }
         }
         // optimal is 52*52 => 2704
         $activity = ($partScore + ($gift * $giftValue)) * ($partWeeks + $gift);
