@@ -26,7 +26,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     const R_MATURITY_COMMITS_FACTOR = 1.2;
     const R_MATURITY_RELEASES_FACTOR = 1.6;
     const R_MATURITY_CONTRIBS_FACTOR = 1.5;
-    const R_MATURITY_SIZE_FACTOR = 1.0;
+    const R_MATURITY_AGE_FACTOR = 1.0;
     const R_ACTIVITY_WEEK_MIN = 15;
 
     /**
@@ -83,27 +83,26 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $stargazers = $repo['stargazers_count'];
         $subscribers = $repo['subscribers_count'];
         $forks = $repo['forks_count'];
-        $size = $repo['size'];
+        $sizeMb = $repo['size'] / 1000;
         $tdCreatedDays = (time() - strtotime($repo['created_at'])) / 86400;
         $tdPushedHours = (time() - strtotime($repo['pushed_at'])) / 3600;
 
-        // Popularity score
+        /*
+         * Popularity score
+         */
         $popularity = ((log($stargazers) * sqrt($stargazers) * 4 * self::R_POP_STARS_FACTOR)
                         + (log($subscribers) * sqrt($subscribers) * 4 * self::R_POP_SUBSCRIBERS_FACTOR)
                         + (log($forks) * sqrt($forks) * 4 * self::R_POP_FORKS_FACTOR));
 
-        // Hotness score
+        /*
+         * Hotness score
+         */
         $hot = $popularity
                 / pow($tdCreatedDays + self::R_HOT_DAYS, self::R_HOT_GRAVITY) * 10000;
 
-        // Maturity score
-        $maturity = (log($commits) * sqrt($commits) * self::R_MATURITY_COMMITS_FACTOR)
-                    + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
-                    + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR)
-                    + (($size / 1000) * self::R_MATURITY_SIZE_FACTOR);
-        $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedDays / 30 / 12);
-
-        // Activity score
+        /*
+         * Activity score
+         */
         $partScore = 0;
         $partWeeks = 0;
         foreach ($participation['all'] as $partCommits) {
@@ -126,6 +125,19 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $activity = ($partScore + ($gift * $giftValue)) * ($partWeeks + $gift);
         // optimal here is 2929 (if the repo was pushed within the last 12 hours)
         $activity += $activity / max(12, $tdPushedHours);
+
+        /*
+         * Maturity score
+         */
+        $maturity = (log($commits) * sqrt($commits) * self::R_MATURITY_COMMITS_FACTOR)
+            + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
+            + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR);
+        $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedDays / 30 / 12) * self::R_MATURITY_AGE_FACTOR;
+        if ($maturity > 1000 && $activity > 500) {
+            $maturity += $sizeMb;
+            // Help low-sized repos get better score
+            $maturity += log($maturity) * ($maturity / (max($sizeMb, 1) * 4));
+        }
 
         $scores = [
             // PHAM score
