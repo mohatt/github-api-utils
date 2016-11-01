@@ -19,13 +19,13 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      * Scores calculation constants.
      */
     const R_HOT_DAYS = 7;
-    const R_HOT_GRAVITY = 1.8;
+    const R_HOT_GRAVITY = 1.6;
     const R_POP_STARS_FACTOR = 1.5;
     const R_POP_SUBSCRIBERS_FACTOR = 1.6;
     const R_POP_FORKS_FACTOR = 1.7;
     const R_MATURITY_COMMITS_FACTOR = 1.2;
-    const R_MATURITY_RELEASES_FACTOR = 1.5;
-    const R_MATURITY_CONTRIBS_FACTOR = 1.6;
+    const R_MATURITY_RELEASES_FACTOR = 1.6;
+    const R_MATURITY_CONTRIBS_FACTOR = 1.5;
     const R_MATURITY_SIZE_FACTOR = 1.0;
     const R_ACTIVITY_WEEK_MIN = 15;
 
@@ -80,23 +80,27 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             throw new Exception\RepoInspectorCrawlerException(sprintf('Github repo stats request failed; %s', $e->getMessage()), 0, $e);
         }
 
+        $stargazers = $repo['stargazers_count'];
+        $subscribers = $repo['subscribers_count'];
+        $forks = $repo['forks_count'];
+        $size = $repo['size'];
         $tdCreatedDays = (time() - strtotime($repo['created_at'])) / 86400;
         $tdPushedHours = (time() - strtotime($repo['pushed_at'])) / 3600;
 
         // Popularity score
-        $popularity = (($repo['stargazers_count'] * self::R_POP_STARS_FACTOR)
-                        + ($repo['subscribers_count'] * self::R_POP_SUBSCRIBERS_FACTOR)
-                        + ($repo['forks_count'] * self::R_POP_FORKS_FACTOR)) / 8;
+        $popularity = ((log($stargazers) * sqrt($stargazers) * 4 * self::R_POP_STARS_FACTOR)
+                        + (log($subscribers) * sqrt($subscribers) * 4 * self::R_POP_SUBSCRIBERS_FACTOR)
+                        + (log($forks) * sqrt($forks) * 4 * self::R_POP_FORKS_FACTOR));
 
         // Hotness score
-        $hot = $repo['stargazers_count']
+        $hot = $popularity
                 / pow($tdCreatedDays + self::R_HOT_DAYS, self::R_HOT_GRAVITY) * 10000;
 
         // Maturity score
         $maturity = (log($commits) * sqrt($commits) * self::R_MATURITY_COMMITS_FACTOR)
                     + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
                     + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR)
-                    + (($repo['size'] / 1000) * self::R_MATURITY_SIZE_FACTOR);
+                    + (($size / 1000) * self::R_MATURITY_SIZE_FACTOR);
         $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedDays / 30 / 12);
 
         // Activity score
