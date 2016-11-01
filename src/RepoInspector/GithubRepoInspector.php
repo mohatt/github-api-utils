@@ -133,7 +133,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
             + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR);
         $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedDays / 30 / 12) * self::R_MATURITY_AGE_FACTOR;
-        if ($maturity > 1000 && $activity > 500) {
+        if ($maturity > 1000 && $activity > 50) {
             $maturity += $sizeMb;
             // Help low-sized repos get better score
             $maturity += log($maturity) * ($maturity / (max($sizeMb, 1) * 4));
