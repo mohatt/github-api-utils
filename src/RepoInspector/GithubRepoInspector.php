@@ -24,7 +24,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     const R_POP_SUBSCRIBERS_FACTOR = 1.6;
     const R_POP_FORKS_FACTOR = 1.7;
     const R_MATURITY_COMMITS_FACTOR = 1.2;
-    const R_MATURITY_RELEASES_FACTOR = 1.6;
+    const R_MATURITY_RELEASES_FACTOR = 1.8;
     const R_MATURITY_CONTRIBS_FACTOR = 1.5;
     const R_MATURITY_AGE_FACTOR = 1.0;
     const R_ACTIVITY_WEEK_MIN = 15;
@@ -128,7 +128,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
          */
         $maturity = (log($commits) * sqrt($commits) * self::R_MATURITY_COMMITS_FACTOR)
             + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
-            + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR);
+            + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR)
+            + log10($releases+$contributors) * 500;
         $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedDays / 30 / 12) * self::R_MATURITY_AGE_FACTOR;
         // No need to consider the size factor, if the maturity score is already too low
         if ($maturity > 500) {
