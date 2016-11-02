@@ -111,7 +111,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
                 ++$partWeeks;
             }
         }
-        // weeks prior to repo creation
+        // Weeks prior to repo creation
         $gift = 52 - ceil(min($tdCreatedDays / 7, 52));
         $giftValue = 0;
         if($partWeeks > 0){
@@ -121,9 +121,9 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
                 $giftValue = min($giftValue, 0.2);
             }
         }
-        // optimal is 52*52 => 2704
+        // Optimal is 52*52 => 2704
         $activity = ($partScore + ($gift * $giftValue)) * ($partWeeks + $gift);
-        // optimal here is 2929 (if the repo was pushed within the last 12 hours)
+        // Optimal here is 2929 (if the repo was pushed within the last 12 hours)
         $activity += $activity / max(12, $tdPushedHours);
 
         /*
@@ -133,20 +133,22 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
             + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR);
         $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedDays / 30 / 12) * self::R_MATURITY_AGE_FACTOR;
-        if ($maturity > 1000) {
+        // No need to consider the size factor, if the maturity score is already too low
+        if ($maturity > 500) {
+            // Since big size doesn't always mean better quality
+            //  We will add its raw value in MB
             $maturity += $sizeMb;
-            // Help low-sized repos get better score
-            if($activity > 50) {
-                $maturity += log($maturity) * ($maturity / (max($sizeMb, 1) * 4));
-            }
+            // Help low-sized repos (with relatively good maturity score) get better score
+            // This value will increase as the maturity-size gap increases
+            $maturity += log($maturity) * ($maturity / (max($sizeMb, 1) * 4));
         }
 
+        // PHAM score
         $scores = [
-            // PHAM score
-            'p' => (int) round($popularity),
-            'h' => (int) round($hot),
-            'a' => (int) round($activity),
-            'm' => (int) round($maturity),
+            'p' => (int) ceil($popularity),
+            'h' => (int) ceil($hot),
+            'a' => (int) ceil($activity),
+            'm' => (int) ceil($maturity),
         ];
 
         $scores_avg = (int) round(($scores['p'] + $scores['a'] + $scores['m']) / 3);
