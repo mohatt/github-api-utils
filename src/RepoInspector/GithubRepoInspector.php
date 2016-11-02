@@ -85,7 +85,6 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $forks = $repo['forks_count'];
         $sizeMb = $repo['size'] / 1000;
         $tdCreatedDays = (time() - strtotime($repo['created_at'])) / 86400;
-        $tdPushedHours = (time() - strtotime($repo['pushed_at'])) / 3600;
 
         /*
          * Popularity score
@@ -123,8 +122,6 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         }
         // Optimal is 52*52 => 2704
         $activity = ($partScore + ($gift * $giftValue)) * ($partWeeks + $gift);
-        // Optimal here is 2929 (if the repo was pushed within the last 12 hours)
-        $activity += $activity / max(12, $tdPushedHours);
 
         /*
          * Maturity score
