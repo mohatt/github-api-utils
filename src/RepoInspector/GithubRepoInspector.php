@@ -138,7 +138,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $maturity += $sizeMb;
             // Help low-sized repos (with relatively good maturity score) get better score
             // This value will increase as the maturity-size gap increases
-            $maturity += log($maturity) * ($maturity / (max($sizeMb, 1) * 4));
+            $maturity += log($maturity) * ($maturity / (max($sizeMb, 1) * 5));
         }
 
         // PHAM score
