@@ -18,8 +18,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     /**
      * Scores calculation constants.
      */
-    const R_HOT_DAYS = 7;
-    const R_HOT_GRAVITY = 1.6;
+    const R_HOT_WEEKS = 1;
+    const R_HOT_GRAVITY = 1.0;
     const R_POP_STARS_FACTOR = 1.5;
     const R_POP_SUBSCRIBERS_FACTOR = 1.6;
     const R_POP_FORKS_FACTOR = 1.7;
@@ -84,7 +84,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $subscribers = $repo['subscribers_count'];
         $forks = $repo['forks_count'];
         $sizeMb = $repo['size'] / 1000;
-        $tdCreatedDays = (time() - strtotime($repo['created_at'])) / 86400;
+        $tdCreatedWeeks = (time() - strtotime($repo['created_at'])) / 604800;
 
         /*
          * Popularity score
@@ -97,7 +97,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
          * Hotness score
          */
         $hot = $popularity
-                / pow($tdCreatedDays + self::R_HOT_DAYS, self::R_HOT_GRAVITY) * 10000;
+                / pow($tdCreatedWeeks + self::R_HOT_WEEKS, self::R_HOT_GRAVITY) * 10;
 
         /*
          * Activity score
@@ -111,7 +111,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             }
         }
         // Weeks prior to repo creation
-        $gift = 52 - ceil(min($tdCreatedDays / 7, 52));
+        $gift = 52 - ceil(min($tdCreatedWeeks, 52));
         $giftValue = 0;
         if($partWeeks > 0){
             $giftValue = min($partScore/$partWeeks, 0.5);
@@ -130,7 +130,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
             + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR)
             + log10($releases+$contributors) * 500;
-        $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedDays / 30 / 12) * self::R_MATURITY_AGE_FACTOR;
+        $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedWeeks / 52) * self::R_MATURITY_AGE_FACTOR;
         // No need to consider the size factor, if the maturity score is already too low
         if ($maturity > 500) {
             // Since big size doesn't always mean better quality
