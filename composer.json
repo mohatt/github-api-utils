@@ -1,7 +1,7 @@
 {
     "name": "mdkholy/github-api-utils",
     "type": "library",
-    "description": "A set of libraries that focus on Github API authentication, token switching and static repository analysis",
+    "description": "Utility library for Github API authentication, token switching and static repository analysis",
     "homepage": "https://github.com/mdkholy/github-api-utils",
     "keywords": ["github", "gh", "api", "utils"],
     "license": "MIT",
