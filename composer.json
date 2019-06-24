@@ -1,8 +1,8 @@
 {
-    "name": "mdkholy/github-api-utils",
+    "name": "mohatt/github-api-utils",
     "type": "library",
     "description": "Utility library for Github API authentication, token switching and static repository analysis",
-    "homepage": "https://github.com/mdkholy/github-api-utils",
+    "homepage": "https://github.com/mohatt/github-api-utils",
     "keywords": ["github", "gh", "api", "utils"],
     "license": "MIT",
     "authors": [
