@@ -332,11 +332,11 @@ class GithubWrapper implements GithubWrapperInterface
         // Set the current active token
         $this->token = $token;
 
-        if ($token instanceof Token\GithubTokenBasicInterface) {
+        if ($token instanceof Token\GithubTokenPersonalInterface) {
             $this->client->authenticate(
-                $token->getUsername(),
-                $token->getPassword(),
-                Github\Client::AUTH_HTTP_PASSWORD
+                $token->getToken(),
+                null,
+                Github\Client::AUTH_ACCESS_TOKEN
             );
 
             return;
@@ -346,15 +346,17 @@ class GithubWrapper implements GithubWrapperInterface
             $this->client->authenticate(
                 $token->getClientID(),
                 $token->getClientSecret(),
-                Github\Client::AUTH_URL_CLIENT_ID
+                Github\Client::AUTH_CLIENT_ID
             );
 
             return;
         }
 
         if ($token instanceof Token\GithubTokenNull) {
-            $this->client->removePlugin(
-                Github\HttpClient\Plugin\Authentication::class
+            $this->client->authenticate(
+                null,
+                null,
+                Github\Client::AUTH_CLIENT_ID
             );
 
             return;

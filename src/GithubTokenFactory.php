@@ -8,12 +8,12 @@ namespace Github\Utils;
 class GithubTokenFactory implements GithubTokenFactoryInterface
 {
     const TOKEN_NULL = 'null';
-    const TOKEN_BASIC = 'basic';
+    const TOKEN_PERSONAL = 'pat';
     const TOKEN_CLIENT_SECRET = 'client_secret';
 
     private static $supports = [
         self::TOKEN_NULL,
-        self::TOKEN_BASIC,
+        self::TOKEN_PERSONAL,
         self::TOKEN_CLIENT_SECRET,
     ];
 
@@ -47,8 +47,8 @@ class GithubTokenFactory implements GithubTokenFactoryInterface
                 case self::TOKEN_NULL:
                     return new Token\GithubTokenNull();
 
-                case self::TOKEN_BASIC:
-                    return new Token\GithubTokenBasic(...$params);
+                case self::TOKEN_PERSONAL:
+                    return new Token\GithubTokenPersonal(...$params);
 
                 case self::TOKEN_CLIENT_SECRET:
                     return new Token\GithubTokenClientSecret(...$params);

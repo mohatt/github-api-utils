@@ -18,16 +18,16 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     /**
      * Scores calculation constants.
      */
-    const R_HOT_WEEKS = 1;
-    const R_HOT_GRAVITY = 1.0;
-    const R_POP_STARS_FACTOR = 1.5;
-    const R_POP_SUBSCRIBERS_FACTOR = 1.6;
-    const R_POP_FORKS_FACTOR = 1.7;
-    const R_MATURITY_COMMITS_FACTOR = 1.2;
-    const R_MATURITY_RELEASES_FACTOR = 1.8;
-    const R_MATURITY_CONTRIBS_FACTOR = 1.5;
-    const R_MATURITY_AGE_FACTOR = 1.0;
-    const R_ACTIVITY_WEEK_MIN = 15;
+    private const R_HOT_WEEKS = 1;
+    private const R_HOT_GRAVITY = 1.0;
+    private const R_POP_STARS_FACTOR = 1.5;
+    private const R_POP_SUBSCRIBERS_FACTOR = 1.6;
+    private const R_POP_FORKS_FACTOR = 1.7;
+    private const R_MATURITY_COMMITS_FACTOR = 1.2;
+    private const R_MATURITY_RELEASES_FACTOR = 1.8;
+    private const R_MATURITY_CONTRIBS_FACTOR = 1.5;
+    private const R_MATURITY_AGE_FACTOR = 1.0;
+    private const R_ACTIVITY_WEEK_MIN = 15;
 
     /**
      * @var GithubWrapperInterface
@@ -43,7 +43,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      * Constructor.
      *
      * @param GithubWrapperInterface       $github
-     * @param HttpClient|HttpMethodsClient $http
+     * @param HttpClient|HttpMethodsClient|null $http
      */
     public function __construct(GithubWrapperInterface $github, HttpClient $http = null)
     {
@@ -58,7 +58,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     /**
      * {@inheritdoc}
      */
-    public function inspect($author, $name)
+    public function inspect(string $author,string $name): array
     {
         try {
             // Fetch api endpoints
@@ -67,7 +67,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $participation = $this->github->api('repo/participation', $args);
 
             // Fetch html to save API quota
-            // Or we could sacrifice quota and make ~4 requestes instead of 1 request
+            // Or we could sacrifice quota and make ~4 requests instead of 1 request
             $htmlStats = $this->getHtmlStats($repo['html_url']);
 
             $commits = $htmlStats['commits'];
@@ -96,8 +96,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         /*
          * Hotness score
          */
-        $hot = $popularity
-                / pow($tdCreatedWeeks + self::R_HOT_WEEKS, self::R_HOT_GRAVITY) * 10;
+        $hot = $popularity / (($tdCreatedWeeks + self::R_HOT_WEEKS) ** self::R_HOT_GRAVITY) * 10;
 
         /*
          * Activity score
@@ -120,6 +119,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
                 $giftValue = min($giftValue, 0.2);
             }
         }
+
         // Optimal is 52*52 => 2704
         $activity = ($partScore + ($gift * $giftValue)) * ($partWeeks + $gift);
 
@@ -130,7 +130,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
             + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR)
             + log10($releases+$contributors) * 500;
-        $maturity += log($maturity) * pow($maturity, 0.35) * ($tdCreatedWeeks / 52) * self::R_MATURITY_AGE_FACTOR;
+        $maturity += log($maturity) * ($maturity ** 0.35) * ($tdCreatedWeeks / 52) * self::R_MATURITY_AGE_FACTOR;
         // No need to consider the size factor, if the maturity score is already too low
         if ($maturity > 500) {
             // Since big size doesn't always mean better quality
@@ -151,71 +151,87 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
         $scores_avg = (int) round(($scores['p'] + $scores['a'] + $scores['m']) / 3);
 
-        return array_merge($this->cleanRepoResponse($repo), [
+        $licence_id = $repo['license']['spdx_id'] ?? '';
+        if ($licence_id && in_array(strtolower($licence_id), ['none', 'noassertion'])) {
+            $licence_id = '';
+        }
+
+        return array_merge($this->stripResponseUrls($repo), [
+            'licence_id' => $licence_id,
             'commits_count' => $commits,
             'branches_count' => $branches,
             'releases_count' => $releases,
-            'contributers_count' => $contributors,
+            'contributors_count' => $contributors,
             'scores' => $scores,
             'scores_avg' => $scores_avg,
         ]);
     }
 
     /**
-     * Fetchs some repo stats from the repo html page (to save API quota).
+     * Fetches some repo stats from the repo html page (to save API quota).
      *
-     * @param $url
+     * @param string $url
      *
      * @return array
      */
-    protected function getHtmlStats($url)
+    protected function getHtmlStats(string $url): array
     {
         try {
             $html = $this->http->get($url);
             $html = (string) $html->getBody();
         } catch (\Exception $e) {
-            throw new \RuntimeException(sprintf('Unable too fecth repo page %s', $url));
+            throw new \RuntimeException(sprintf('Unable too fetch repo page %s', $url));
         }
-
+        $stats = [
+            // Not all repos have these fields set
+            'releases' => '0',
+            'contributors' => '0',
+        ];
         try {
             $crawler = new DomCrawler\Crawler($html);
-            $nums = [
-                'commits' => $crawler->filter('.numbers-summary li:nth-child(1) .num')->text(),
-                'branches' => $crawler->filter('.numbers-summary li:nth-child(2) .num')->text(),
-                'releases' => $crawler->filter('.numbers-summary li:nth-child(3) .num')->text(),
-                'contributors' => $crawler->filter('.numbers-summary li:nth-child(4) .num')->text(),
-            ];
+            $crawler->filter('#repo-content-pjax-container .Link--primary')->each(function ($node) use (&$stats) {
+                $matches = [];
+                $subject = trim($node->text());
+                if (preg_match('/([\d,]+)\s+branch(?:es)?/i', $subject, $matches)) {
+                    $stats['branches'] = $matches[1];
+                } elseif (preg_match('/([\d,]+)\s+commits?/i', $subject, $matches)) {
+                    $stats['commits'] = $matches[1];
+                } elseif (preg_match('/releases\s+([\d,]+)/i', $subject, $matches)) {
+                    $stats['releases'] = $matches[1];
+                } elseif (preg_match('/contributors\s+([\d,]+)/i', $subject, $matches)) {
+                    $stats['contributors'] = $matches[1];
+                }
+            });
+
+            if (count($stats) < 4) {
+                throw new \Exception('Unable to extract required fields with DomCrawler');
+            }
         } catch (\Exception $e) {
             throw new \RuntimeException(sprintf('Unable too parse repo page %s; %s', $url, $e->getMessage()));
         }
 
-        $nums = array_map(function ($text) {
-            return (int) preg_replace('/[^0-9]/', '', $text);
-        }, $nums);
-
-        return $nums;
+        return array_map(static function ($text) {
+            return (int) preg_replace('/\D/', '', $text);
+        }, $stats);
     }
 
     /**
-     * Cleans repo json data received from the API.
+     * Strips unneeded repo url fields received from the API.
      *
      * @param array $json
      *
      * @return array
      */
-    protected function cleanRepoResponse(array $json)
+    protected function stripResponseUrls(array $json): array
     {
         foreach ($json as $k => $v) {
             if (is_array($v)) {
-                $json[$k] = $this->cleanRepoResponse($v);
-            } else {
-                if ($k === 'html_url') {
-                    $json['url'] = $v;
-                    unset($json[$k]);
-                }
-                if (false !== strpos($k, 'url') && !in_array($k, ['avatar_url'])) {
-                    unset($json[$k]);
-                }
+                $json[$k] = $this->stripResponseUrls($v);
+            } else if ('html_url' === $k) {
+                $json['url'] = $v;
+                unset($json[$k]);
+            } else if ('avatar_url' !== $k && false !== strpos($k, '_url')) {
+                unset($json[$k]);
             }
         }
 

@@ -32,7 +32,7 @@ class GithubTokenClientSecret extends GithubTokenAbstract implements GithubToken
     {
         $this->client = $client;
         $this->secret = $secret;
-        $this->id = md5($this->client.$this->secret);
+        $this->id = 'cst#' . md5($this->client.$this->secret);
     }
 
     /**

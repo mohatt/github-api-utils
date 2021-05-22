@@ -15,5 +15,5 @@ interface GithubRepoInspectorInterface
      *
      * @return array
      */
-    public function inspect($author, $name);
+    public function inspect(string $author, string $name): array;
 }
