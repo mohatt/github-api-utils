@@ -353,11 +353,7 @@ class GithubWrapper implements GithubWrapperInterface
         }
 
         if ($token instanceof Token\GithubTokenNull) {
-            $this->client->authenticate(
-                null,
-                null,
-                Github\Client::AUTH_CLIENT_ID
-            );
+            $this->client->authenticate('', '', Github\Client::AUTH_CLIENT_ID);
 
             return;
         }

@@ -5,7 +5,7 @@ namespace Github\Utils\RepoInspector;
 use Http\Client\HttpClient;
 use Http\Client\Common\HttpMethodsClient;
 use Http\Discovery\HttpClientDiscovery;
-use Http\Discovery\MessageFactoryDiscovery;
+use Http\Discovery\Psr17FactoryDiscovery;
 use Symfony\Component\DomCrawler;
 use Github\Exception\ExceptionInterface as GithubAPIException;
 use Github\Utils\GithubWrapperInterface;
@@ -51,7 +51,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
         $this->http = $http ?: HttpClientDiscovery::find();
         if (!$this->http instanceof HttpMethodsClient) {
-            $this->http = new HttpMethodsClient($this->http, MessageFactoryDiscovery::find());
+            $this->http = new HttpMethodsClient($this->http, Psr17FactoryDiscovery::findRequestFactory());
         }
     }
 
