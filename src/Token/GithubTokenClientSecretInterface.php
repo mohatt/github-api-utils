@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils\Token;
 
 /**
@@ -9,15 +11,11 @@ interface GithubTokenClientSecretInterface extends GithubTokenInterface
 {
     /**
      * Gets the client id.
-     *
-     * @return string
      */
-    public function getClientID();
+    public function getClientID(): string;
 
     /**
      * Gets the client secret.
-     *
-     * @return string
      */
-    public function getClientSecret();
+    public function getClientSecret(): string;
 }

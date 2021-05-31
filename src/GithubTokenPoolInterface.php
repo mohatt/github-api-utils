@@ -1,6 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils;
+
+use Github\Utils\Token\GithubTokenInterface;
 
 /**
  * Interface for a GithubTokenPool.
@@ -8,43 +12,32 @@ namespace Github\Utils;
 interface GithubTokenPoolInterface
 {
     /**
-     * Sets the pool path.
-     *
-     * @param string $pool
-     */
-    public function setPool($pool);
-
-    /**
      * Sets the pool tokens.
      *
-     * @param Token\GithubTokenInterface[]|array[] $tokens
-     * @param bool                                 $purge
+     * @param GithubTokenInterface[] $tokens
      */
-    public function setTokens(array $tokens, $purge = false);
+    public function setTokens(array $tokens, bool $purge = false);
 
     /**
      * Fetches pool tokens.
      *
-     * @return Token\GithubTokenInterface[]
+     * @return GithubTokenInterface[]
      */
-    public function getTokens();
+    public function getTokens(): array;
 
     /**
      * Gets a token for the given {$scope}.
      *
-     * @param string $scope
-     *
-     * @return Token\GithubTokenInterface
+     * @throws \LogicException
      */
-    public function getToken($scope);
+    public function getToken(string $scope): GithubTokenInterface;
 
     /**
      * Marks the current {$scope} token as expired and gets a new one from the pool.
      *
-     * @param string $scope
-     * @param int    $reset Expired token reset time
+     * @param int $reset Expired token reset time
      *
-     * @return Token\GithubTokenInterface
+     * @throws \LogicException
      */
-    public function nextToken($scope, $reset);
+    public function nextToken(string $scope, int $reset): GithubTokenInterface;
 }

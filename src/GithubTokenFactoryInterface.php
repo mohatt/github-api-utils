@@ -1,6 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils;
+
+use Github\Utils\Token\GithubTokenInterface;
 
 /**
  * Interface for a GithubTokenFactory.
@@ -8,21 +12,19 @@ namespace Github\Utils;
 interface GithubTokenFactoryInterface
 {
     /**
-     * Creates a token ot list of tokens.
+     * Creates a token or list of tokens.
      *
-     * @param string|array $type   Token type or an array of token definitions
-     * @param array        $params Token paramas
+     * @param array|string $type   Token type or an array of token definitions
+     * @param ...          $params Token params
      *
-     * @return Token\GithubTokenInterface|Token\GithubTokenInterface[]
+     * @return GithubTokenInterface|GithubTokenInterface[]
      */
-    public static function create($type, ...$params);
+    public static function create(string | array $type, ...$params): array | GithubTokenInterface;
 
     /**
-     * Gets a list of supported input types or checks whether the given type is supported.
+     * Gets a list of supported token types or checks whether the given type is supported.
      *
-     * @param string $type Token type to check against
-     *
-     * @return bool|array
+     * @param null|string $type Token type to check against
      */
-    public static function supports($type = null);
+    public static function supports(string $type = null): bool | array;
 }

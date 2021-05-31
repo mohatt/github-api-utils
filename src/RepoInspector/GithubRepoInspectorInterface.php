@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils\RepoInspector;
 
 /**
@@ -10,10 +12,7 @@ interface GithubRepoInspectorInterface
     /**
      * Inspects a given repository and returns various repo details.
      *
-     * @param string $author
-     * @param string $name
-     *
-     * @return array
+     * @thorws Exception\RepoInspectorException
      */
     public function inspect(string $author, string $name): array;
 }

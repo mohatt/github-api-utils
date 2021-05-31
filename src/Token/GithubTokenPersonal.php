@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils\Token;
 
 /**
@@ -7,31 +9,17 @@ namespace Github\Utils\Token;
  */
 class GithubTokenPersonal extends GithubTokenAbstract implements GithubTokenPersonalInterface
 {
-    /**
-     * @var string
-     */
-    protected $id;
+    protected string $id;
 
-    /**
-     * @var string
-     */
-    protected $token;
-
-    /**
-     * Constructor.
-     *
-     * @param string $token
-     */
-    public function __construct($token)
+    public function __construct(protected string $token)
     {
-        $this->token = $token;
-        $this->id = 'pat#' . md5($this->token);
+        $this->id = 'pat#'.md5($token);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getId($short = false)
+    public function getId(bool $short = false): string
     {
         return $short ? substr($this->id, 0, 8) : $this->id;
     }
@@ -39,7 +27,7 @@ class GithubTokenPersonal extends GithubTokenAbstract implements GithubTokenPers
     /**
      * {@inheritdoc}
      */
-    public function getToken()
+    public function getToken(): string
     {
         return $this->token;
     }

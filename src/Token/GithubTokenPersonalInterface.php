@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils\Token;
 
 /**
@@ -9,8 +11,6 @@ interface GithubTokenPersonalInterface extends GithubTokenInterface
 {
     /**
      * Gets the github token.
-     *
-     * @return string
      */
-    public function getToken();
+    public function getToken(): string;
 }

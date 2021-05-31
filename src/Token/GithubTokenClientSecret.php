@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils\Token;
 
 /**
@@ -7,38 +9,17 @@ namespace Github\Utils\Token;
  */
 class GithubTokenClientSecret extends GithubTokenAbstract implements GithubTokenClientSecretInterface
 {
-    /**
-     * @var string
-     */
-    protected $id;
+    protected string $id;
 
-    /**
-     * @var string
-     */
-    protected $client;
-
-    /**
-     * @var string
-     */
-    protected $secret;
-
-    /**
-     * Constructor.
-     *
-     * @param string $client
-     * @param string $secret
-     */
-    public function __construct($client, $secret)
+    public function __construct(protected string $client, protected string $secret)
     {
-        $this->client = $client;
-        $this->secret = $secret;
-        $this->id = 'cst#' . md5($this->client.$this->secret);
+        $this->id = 'cst#'.md5($client.$secret);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getId($short = false)
+    public function getId(bool $short = false): string
     {
         return $short ? substr($this->id, 0, 8) : $this->id;
     }
@@ -46,7 +27,7 @@ class GithubTokenClientSecret extends GithubTokenAbstract implements GithubToken
     /**
      * {@inheritdoc}
      */
-    public function getClientID()
+    public function getClientID(): string
     {
         return $this->client;
     }
@@ -54,7 +35,7 @@ class GithubTokenClientSecret extends GithubTokenAbstract implements GithubToken
     /**
      * {@inheritdoc}
      */
-    public function getClientSecret()
+    public function getClientSecret(): string
     {
         return $this->secret;
     }

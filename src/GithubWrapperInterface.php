@@ -1,9 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils;
 
 use Github;
-use Psr\Log\LoggerInterface;
 
 /**
  * Interface for a GithubWrapper.
@@ -11,61 +12,44 @@ use Psr\Log\LoggerInterface;
 interface GithubWrapperInterface
 {
     /**
-     * @return Github\Client
+     * Gets Github client instance.
      */
-    public function getClient();
+    public function getClient(): Github\Client;
 
     /**
-     * @return Github\ResultPager
+     * Gets Github pager instance.
      */
-    public function getPager();
+    public function getPager(): Github\ResultPager;
 
     /**
-     * @param LoggerInterface $logger
+     * Gets tokenPool instance.
      */
-    public function setLogger(LoggerInterface $logger);
-
-    /**
-     * @param GithubTokenPoolInterface $tokenPool
-     */
-    public function setTokenPool(GithubTokenPoolInterface $tokenPool);
-
-    /**
-     * @return GithubTokenPoolInterface
-     */
-    public function getTokenPool();
+    public function getTokenPool(): GithubTokenPoolInterface;
 
     /**
      * Gets the currently active token.
-     *
-     * @param GithubTokenInterface
      */
-    public function getToken();
+    public function getToken(): Token\GithubTokenInterface;
 
     /**
-     * Sets a custom token to be used for authentication.
-     *
-     * @param Token\GithubTokenInterface|null $token
+     * Sets tokenPool instance.
      */
-    public function setToken(Token\GithubTokenInterface $token = null);
+    public function setTokenPool(GithubTokenPoolInterface $tokenPool): void;
+
+    /**
+     * Sets a custom token to be used for authentication, if no token is provided it creates a GithubTokenNull token.
+     */
+    public function setToken(Token\GithubTokenInterface $token = null): void;
 
     /**
      * Checks whether or not a custom token has been defined.
-     *
-     * @param bool
      */
-    public function hasCustomToken();
+    public function hasCustomToken(): bool;
 
     /**
      * Checks whether or not the client has been authenticated.
-     *
-     *  Please note that this method will still return true if the client
-     *  has been authenticated with a GithubTokenNull token. However, you could use
-     *  getToken() to get the current token and check if it's an instance of GithubTokenNull.
-     *
-     * @param bool
      */
-    public function isAuthenticated();
+    public function isAuthenticated(): bool;
 
     /**
      * Calls an API method identified by a given path.
@@ -73,29 +57,21 @@ interface GithubWrapperInterface
      * @param string $path Path to an API method
      * @param array  $args Arguments for that method
      * @param bool   $full Causes the method to fetch all results not just the first page
-     *
-     * @return mixed
      */
-    public function api($path, array $args = [], $full = false);
+    public function api(string $path, array $args = [], bool $full = false): mixed;
 
     /**
      * Checks if there is a next page.
-     *
-     * @return bool
      */
-    public function hasNext();
+    public function hasNext(): bool;
 
     /**
      * Fetches the next page.
-     *
-     * @return mixed
      */
-    public function next();
+    public function next(): mixed;
 
     /**
      * Fetches the last page.
-     *
-     * @return mixed
      */
-    public function last();
+    public function last(): mixed;
 }

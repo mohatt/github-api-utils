@@ -1,18 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils\Token;
 
 abstract class GithubTokenAbstract implements GithubTokenInterface
 {
-    /**
-     * @var int[]
-     */
-    protected $reset = [];
+    protected array $reset = [];
 
     /**
      * {@inheritdoc}
      */
-    public function canAccess($scope)
+    public function canAccess(string $scope): bool | int
     {
         if (!isset($this->reset[$scope])) {
             return true;
@@ -26,8 +25,8 @@ abstract class GithubTokenAbstract implements GithubTokenInterface
     /**
      * {@inheritdoc}
      */
-    public function setReset($scope, $reset)
+    public function setReset(string $scope, int $reset): void
     {
-        $this->reset[$scope] = (int) $reset;
+        $this->reset[$scope] = $reset;
     }
 }

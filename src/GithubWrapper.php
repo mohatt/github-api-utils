@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils;
 
 use Github;
+use Github\Utils\Token\GithubTokenInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -10,75 +13,37 @@ use Psr\Log\LoggerInterface;
  */
 class GithubWrapper implements GithubWrapperInterface
 {
-    /**
-     * @var Github\Client
-     */
-    protected $client;
-
-    /**
-     * @var Github\ResultPager
-     */
-    protected $pager;
-
-    /**
-     * @var GithubTokenPoolInterface
-     */
-    protected $tokenPool;
-
-    /**
-     * @var LoggerInterface
-     */
-    protected $logger;
-
-    /**
-     * @var Token\GithubTokenInterface
-     */
-    protected $token;
-
-    /**
-     * @var string
-     */
-    protected $scope;
-
-    /**
-     * @var array
-     */
-    protected $scopeTokens = [];
-
-    /**
-     * @var bool
-     */
-    protected $hasCustomToken = false;
+    protected Github\Client $client;
+    protected Github\ResultPager $pager;
+    protected GithubTokenPoolInterface $tokenPool;
+    protected GithubTokenInterface $token;
+    protected string $scope;
+    protected array $scopeTokens = [];
+    protected bool $hasCustomToken = false;
 
     /**
      * Constructor.
      *
-     * @param Github\Client                                       $client Github client
-     * @param GithubTokenPoolInterface|Token\GithubTokenInterface $token  Could be a single token or a tokenPool instance
-     * @param LoggerInterface                                     $logger An optional logger instance
+     * @param null|Github\Client                                 $client Github client instance
+     * @param null|GithubTokenInterface|GithubTokenPoolInterface $token  Could be a single token or a tokenPool instance
+     * @param null|LoggerInterface                               $logger An optional PSR-3 logger instance
      */
-    public function __construct(Github\Client $client = null, $token = null, LoggerInterface $logger = null)
+    public function __construct(Github\Client $client = null, GithubTokenPoolInterface | GithubTokenInterface $token = null, protected ?LoggerInterface $logger = null)
     {
         $this->client = $client ?: new Github\Client();
         $this->pager = new Github\ResultPager($this->client);
 
-        if (null !== $token) {
-            if ($token instanceof GithubTokenPoolInterface) {
-                $this->setTokenPool($token);
-            } else {
-                $this->setToken($token);
-            }
-        }
-
-        if (null !== $logger) {
-            $this->setLogger($logger);
+        if ($token instanceof GithubTokenPoolInterface) {
+            $this->setTokenPool($token);
+        } else {
+            $this->setToken($token);
         }
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getClient()
+    public function getClient(): Github\Client
     {
         return $this->client;
     }
@@ -86,7 +51,7 @@ class GithubWrapper implements GithubWrapperInterface
     /**
      * {@inheritdoc}
      */
-    public function getPager()
+    public function getPager(): Github\ResultPager
     {
         return $this->pager;
     }
@@ -94,23 +59,7 @@ class GithubWrapper implements GithubWrapperInterface
     /**
      * {@inheritdoc}
      */
-    public function setLogger(LoggerInterface $logger)
-    {
-        $this->logger = $logger;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function setTokenPool(GithubTokenPoolInterface $tokenPool)
-    {
-        $this->tokenPool = $tokenPool;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function getTokenPool()
+    public function getTokenPool(): GithubTokenPoolInterface
     {
         return $this->tokenPool;
     }
@@ -118,7 +67,15 @@ class GithubWrapper implements GithubWrapperInterface
     /**
      * {@inheritdoc}
      */
-    public function getToken()
+    public function setTokenPool(GithubTokenPoolInterface $tokenPool): void
+    {
+        $this->tokenPool = $tokenPool;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getToken(): GithubTokenInterface
     {
         return $this->token;
     }
@@ -126,16 +83,7 @@ class GithubWrapper implements GithubWrapperInterface
     /**
      * {@inheritdoc}
      */
-    public function setToken(Token\GithubTokenInterface $token = null)
-    {
-        $this->hasCustomToken = true;
-        $this->authenticate($token);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function hasCustomToken()
+    public function hasCustomToken(): bool
     {
         return $this->hasCustomToken;
     }
@@ -143,41 +91,51 @@ class GithubWrapper implements GithubWrapperInterface
     /**
      * {@inheritdoc}
      */
-    public function isAuthenticated()
+    public function setToken(GithubTokenInterface $token = null): void
     {
-        return $this->token instanceof Token\GithubTokenInterface;
+        $this->hasCustomToken = true;
+        if (null === $token) {
+            $token = new Token\GithubTokenNull();
+        }
+
+        $this->authenticate($token);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function api($path, array $args = [], $full = false)
+    public function isAuthenticated(): bool
     {
-        $segs = explode('/', $path);
-        if (count($segs) <= 1) {
-            throw new \InvalidArgumentException(sprintf("Invalid Github API path provided '%s'; No method is provided", $path));
+        return $this->token instanceof Token\GithubTokenInterface && !$this->token instanceof Token\GithubTokenNull;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function api(string $path, array $args = [], bool $full = false): mixed
+    {
+        $segments = explode('/', $path);
+        if (\count($segments) <= 1) {
+            throw new \InvalidArgumentException(sprintf("Invalid Github API path '%s'; No method is provided", $path));
         }
 
-        $instance = $this->client->api(array_shift($segs));
-        $method = array_pop($segs);
-        foreach ($segs as $seg) {
+        $instance = $this->client->api(array_shift($segments));
+        $method = array_pop($segments);
+        foreach ($segments as $seg) {
             $instance = $instance->{$seg}();
         }
 
-        $callback = function () use ($instance, $method, $args, $full) {
-            if ($full) {
-                return $this->pager->fetchAll($instance, $method, $args);
-            }
-
-            return $this->pager->fetch($instance, $method, $args);
-        };
+        $callback = fn () => $full
+            ? $this->pager->fetchAll($instance, $method, $args)
+            : $this->pager->fetch($instance, $method, $args)
+        ;
 
         if ($this->hasCustomToken()) {
-            return $this->callApi($callback);
+            return $this->invoke($callback);
         }
 
-        if (empty($this->tokenPool)) {
-            throw new \LogicException('You must provide a GithubToken or a TokenPool instance in order to invoke an API call');
+        if (!isset($this->tokenPool)) {
+            throw new \LogicException('You must provide a GithubToken or a GithubTokenPool instance in order to invoke an API call');
         }
 
         // Set the token scope
@@ -195,7 +153,7 @@ class GithubWrapper implements GithubWrapperInterface
     /**
      * {@inheritdoc}
      */
-    public function hasNext()
+    public function hasNext(): bool
     {
         return $this->pager->hasNext();
     }
@@ -203,42 +161,38 @@ class GithubWrapper implements GithubWrapperInterface
     /**
      * {@inheritdoc}
      */
-    public function next()
+    public function next(): mixed
     {
-        if (empty($this->tokenPool)) {
+        if (!isset($this->tokenPool)) {
             return $this->pager->fetchNext();
         }
 
-        return $this->call(function () {
-            return $this->pager->fetchNext();
-        });
+        return $this->call(fn () => $this->pager->fetchNext());
     }
 
     /**
      * {@inheritdoc}
      */
-    public function last()
+    public function last(): mixed
     {
-        if (empty($this->tokenPool)) {
+        if (!isset($this->tokenPool)) {
             return $this->pager->fetchLast();
         }
 
-        return $this->call(function () {
-            return $this->pager->fetchLast();
-        });
+        return $this->call(fn () => $this->pager->fetchLast());
     }
 
     /**
      * Invokes the api call while taking care of rate limiting and token switching.
-     *
-     * @param \Closure $callback
-     *
-     * @return mixed
      */
-    protected function call(\Closure $callback)
+    protected function call(\Closure $callback, int $retries = 0): mixed
     {
-        if (empty($this->tokenPool)) {
-            throw new \LogicException('This method should not be invoked without a TokenPool defined');
+        if (!isset($this->tokenPool)) {
+            throw new \LogicException('This method should not be invoked without a TokenPool instance defined');
+        }
+
+        if ($retries > 5) {
+            throw new \RuntimeException('Maximum retry count for call() has been reached');
         }
 
         $scope = $this->scope;
@@ -250,63 +204,64 @@ class GithubWrapper implements GithubWrapperInterface
         $token = $this->scopeTokens[$scope];
         $tokenAllowed = $token->canAccess($scope);
 
-        if (is_int($tokenAllowed)) {
+        if (\is_int($tokenAllowed)) {
             // Wait for the token to reset
-            $this->logger &&
-                $this->logger->warning(sprintf(
-                    'Current Github %s token %s will reset in %d minutes, sleeping...',
+            $this->logger
+                && $this->logger->warning(sprintf(
+                    'Current Github token [%s: %s] will reset in %d minutes, sleeping...',
                     $scope,
-                    $token->getId(),
+                    $token->getId(true),
                     round($tokenAllowed / 60)
                 ));
 
             sleep($tokenAllowed);
 
-            //@todo: prevent possible endless invoke loop
-            return $this->call($callback);
+            return $this->call($callback, ++$retries);
         }
 
         try {
             // Apply the token to the client
             $this->authenticate($token);
             // Invoke the api call
-            $result = $this->callApi($callback);
+            $result = $this->invoke($callback);
         } catch (Github\Exception\ApiLimitExceedException $e) {
             // Token expired
-            $this->logger &&
-                $this->logger->warning(sprintf(
-                    'Github %s rate limit reached for token %s! Getting a new token from the pool',
-                    $scope,
-                    $token->getId(true)
+            $this->logger
+                && $this->logger->warning(sprintf(
+                    'Github token %s rate limit reached for scope %s! Getting a new token from the pool',
+                    $token->getId(true),
+                    $scope
                 ));
 
             // Get the next token in the pool
             $this->scopeTokens[$scope] = $this->tokenPool->nextToken($scope, $e->getResetTime());
-            $this->logger &&
-                $this->logger->debug(sprintf(
-                    'Switched Github %s token to %s',
-                    $scope,
-                    $this->scopeTokens[$scope]->getId(true))
+            $this->logger
+                && $this->logger->debug(
+                    sprintf(
+                        'Switched Github %s token to %s',
+                        $scope,
+                        $this->scopeTokens[$scope]->getId(true)
+                    )
                 );
 
-            return $this->call($callback);
+            return $this->call($callback, ++$retries);
         }
 
         return $result;
     }
 
     /**
-     * Invokes the api call with a specific token.
-     *
-     * @param \Closure $callback
-     *
-     * @return mixed
+     * Invokes the api call with the current active token.
      */
-    protected function callApi(\Closure $callback)
+    protected function invoke(\Closure $callback, int $retries = 0): mixed
     {
+        if ($retries > 5) {
+            throw new \RuntimeException('Maximum retry count for invoke() has been reached');
+        }
+
         $result = $callback();
-        if (is_object($result)) {
-            throw new \UnexpectedValueException(sprintf("Expected API response but got an '%s' object", gettype($result)));
+        if (\is_object($result)) {
+            throw new \UnexpectedValueException(sprintf("Expected API response but got an '%s' object", \gettype($result)));
         }
 
         $code = $this->client->getLastResponse()->getStatusCode();
@@ -315,8 +270,7 @@ class GithubWrapper implements GithubWrapperInterface
             // Sleep for a few moments until Github processing is complete
             sleep(1);
 
-            // @todo: prevent possible endless invoke loop
-            return $this->callApi($callback);
+            return $this->invoke($callback, ++$retries);
         }
 
         return $result;
@@ -324,10 +278,8 @@ class GithubWrapper implements GithubWrapperInterface
 
     /**
      * Authenticate the client with the given token.
-     *
-     * @param Token\GithubTokenInterface $token
      */
-    protected function authenticate(Token\GithubTokenInterface $token)
+    protected function authenticate(GithubTokenInterface $token): void
     {
         // Set the current active token
         $this->token = $token;
@@ -358,6 +310,6 @@ class GithubWrapper implements GithubWrapperInterface
             return;
         }
 
-        throw new \UnexpectedValueException(sprintf("Unsupported token provided of type '%s'", get_class($token)));
+        throw new \UnexpectedValueException(sprintf("Unsupported token provided of type '%s'", \get_class($token)));
     }
 }

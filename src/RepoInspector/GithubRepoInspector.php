@@ -1,14 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Github\Utils\RepoInspector;
 
-use Http\Client\HttpClient;
+use Github\Exception\ExceptionInterface as GithubAPIException;
+use Github\Utils\GithubWrapperInterface;
 use Http\Client\Common\HttpMethodsClient;
+use Http\Client\HttpClient;
 use Http\Discovery\HttpClientDiscovery;
 use Http\Discovery\Psr17FactoryDiscovery;
 use Symfony\Component\DomCrawler;
-use Github\Exception\ExceptionInterface as GithubAPIException;
-use Github\Utils\GithubWrapperInterface;
 
 /**
  * Statistical analysis tool for github repositories.
@@ -16,7 +18,7 @@ use Github\Utils\GithubWrapperInterface;
 class GithubRepoInspector implements GithubRepoInspectorInterface
 {
     /**
-     * Scores calculation constants.
+     * Score calculation constants.
      */
     private const R_HOT_WEEKS = 1;
     private const R_HOT_GRAVITY = 1.0;
@@ -29,26 +31,10 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     private const R_MATURITY_AGE_FACTOR = 1.0;
     private const R_ACTIVITY_WEEK_MIN = 15;
 
-    /**
-     * @var GithubWrapperInterface
-     */
-    protected $github;
+    protected HttpMethodsClient $http;
 
-    /**
-     * @var HttpMethodsClient
-     */
-    protected $http;
-
-    /**
-     * Constructor.
-     *
-     * @param GithubWrapperInterface       $github
-     * @param HttpClient|HttpMethodsClient|null $http
-     */
-    public function __construct(GithubWrapperInterface $github, HttpClient $http = null)
+    public function __construct(protected GithubWrapperInterface $github, HttpClient | HttpMethodsClient $http = null)
     {
-        $this->github = $github;
-
         $this->http = $http ?: HttpClientDiscovery::find();
         if (!$this->http instanceof HttpMethodsClient) {
             $this->http = new HttpMethodsClient($this->http, Psr17FactoryDiscovery::findRequestFactory());
@@ -58,7 +44,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     /**
      * {@inheritdoc}
      */
-    public function inspect(string $author,string $name): array
+    public function inspect(string $author, string $name): array
     {
         try {
             // Fetch api endpoints
@@ -75,9 +61,9 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $releases = $htmlStats['releases'];
             $contributors = $htmlStats['contributors'];
         } catch (GithubAPIException $e) {
-            throw new Exception\RepoInspectorAPIException(sprintf('Github API request failed; %s', $e->getMessage()), 0, $e);
+            throw new Exception\RepoInspectorAPIException(sprintf('Github API request failed; %s', $e->getMessage()), $e->getCode(), $e);
         } catch (\Exception $e) {
-            throw new Exception\RepoInspectorCrawlerException(sprintf('Github repo stats request failed; %s', $e->getMessage()), 0, $e);
+            throw new Exception\RepoInspectorCrawlerException(sprintf('Github repo stats request failed; %s', $e->getMessage()), $e->getCode(), $e);
         }
 
         $stargazers = $repo['stargazers_count'];
@@ -86,21 +72,15 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $sizeMb = $repo['size'] / 1000;
         $tdCreatedWeeks = (time() - strtotime($repo['created_at'])) / 604800;
 
-        /*
-         * Popularity score
-         */
+        // Popularity score
         $popularity = ((log($stargazers) * sqrt($stargazers) * 4 * self::R_POP_STARS_FACTOR)
                         + (log($subscribers) * sqrt($subscribers) * 4 * self::R_POP_SUBSCRIBERS_FACTOR)
                         + (log($forks) * sqrt($forks) * 4 * self::R_POP_FORKS_FACTOR));
 
-        /*
-         * Hotness score
-         */
+        // Hotness score
         $hot = $popularity / (($tdCreatedWeeks + self::R_HOT_WEEKS) ** self::R_HOT_GRAVITY) * 10;
 
-        /*
-         * Activity score
-         */
+        // Activity score
         $partScore = 0;
         $partWeeks = 0;
         foreach ($participation['all'] as $partCommits) {
@@ -112,10 +92,10 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         // Weeks prior to repo creation
         $gift = 52 - ceil(min($tdCreatedWeeks, 52));
         $giftValue = 0;
-        if($partWeeks > 0){
-            $giftValue = min($partScore/$partWeeks, 0.5);
+        if ($partWeeks > 0) {
+            $giftValue = min($partScore / $partWeeks, 0.5);
             // Adjust the gift value for low activity repos
-            if($partWeeks < 8){
+            if ($partWeeks < 8) {
                 $giftValue = min($giftValue, 0.2);
             }
         }
@@ -123,13 +103,11 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         // Optimal is 52*52 => 2704
         $activity = ($partScore + ($gift * $giftValue)) * ($partWeeks + $gift);
 
-        /*
-         * Maturity score
-         */
+        // Maturity score
         $maturity = (log($commits) * sqrt($commits) * self::R_MATURITY_COMMITS_FACTOR)
             + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
             + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR)
-            + log10($releases+$contributors) * 500;
+            + log10($releases + $contributors) * 500;
         $maturity += log($maturity) * ($maturity ** 0.35) * ($tdCreatedWeeks / 52) * self::R_MATURITY_AGE_FACTOR;
         // No need to consider the size factor, if the maturity score is already too low
         if ($maturity > 500) {
@@ -152,7 +130,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $scores_avg = (int) round(($scores['p'] + $scores['a'] + $scores['m']) / 3);
 
         $licence_id = $repo['license']['spdx_id'] ?? '';
-        if ($licence_id && in_array(strtolower($licence_id), ['none', 'noassertion'])) {
+        if ($licence_id && \in_array(strtolower($licence_id), ['none', 'noassertion'])) {
             $licence_id = '';
         }
 
@@ -170,9 +148,9 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     /**
      * Fetches some repo stats from the repo html page (to save API quota).
      *
-     * @param string $url
+     * @throws \RuntimeException
      *
-     * @return array
+     * @return array<string, int>
      */
     protected function getHtmlStats(string $url): array
     {
@@ -180,16 +158,17 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $html = $this->http->get($url);
             $html = (string) $html->getBody();
         } catch (\Exception $e) {
-            throw new \RuntimeException(sprintf('Unable too fetch repo page %s', $url));
+            throw new \RuntimeException(sprintf('Unable to fetch repo page %s; %s', $url, $e->getMessage()), $e->getCode(), $e);
         }
         $stats = [
             // Not all repos have these fields set
             'releases' => '0',
             'contributors' => '0',
         ];
+
         try {
             $crawler = new DomCrawler\Crawler($html);
-            $crawler->filter('#repo-content-pjax-container .Link--primary')->each(function ($node) use (&$stats) {
+            $crawler->filter('#repo-content-pjax-container .Link--primary')->each(function ($node) use (&$stats): void {
                 $matches = [];
                 $subject = trim($node->text());
                 if (preg_match('/([\d,]+)\s+branch(?:es)?/i', $subject, $matches)) {
@@ -203,34 +182,28 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
                 }
             });
 
-            if (count($stats) < 4) {
+            if (\count($stats) < 4) {
                 throw new \Exception('Unable to extract required fields with DomCrawler');
             }
         } catch (\Exception $e) {
-            throw new \RuntimeException(sprintf('Unable too parse repo page %s; %s', $url, $e->getMessage()));
+            throw new \RuntimeException(sprintf('Unable to parse repo page %s; %s', $url, $e->getMessage()), $e->getCode(), $e);
         }
 
-        return array_map(static function ($text) {
-            return (int) preg_replace('/\D/', '', $text);
-        }, $stats);
+        return array_map(static fn ($text) => (int) preg_replace('/\D/', '', $text), $stats);
     }
 
     /**
      * Strips unneeded repo url fields received from the API.
-     *
-     * @param array $json
-     *
-     * @return array
      */
     protected function stripResponseUrls(array $json): array
     {
         foreach ($json as $k => $v) {
-            if (is_array($v)) {
+            if (\is_array($v)) {
                 $json[$k] = $this->stripResponseUrls($v);
-            } else if ('html_url' === $k) {
+            } elseif ('html_url' === $k) {
                 $json['url'] = $v;
                 unset($json[$k]);
-            } else if ('avatar_url' !== $k && false !== strpos($k, '_url')) {
+            } elseif ('avatar_url' !== $k && str_contains($k, '_url')) {
                 unset($json[$k]);
             }
         }

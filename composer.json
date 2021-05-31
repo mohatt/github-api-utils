@@ -1,7 +1,7 @@
 {
   "name": "mohatt/github-api-utils",
   "type": "library",
-  "description": "Utility library for Github API authentication, token switching and static repository analysis",
+  "description": "Utility library for Github API authentication, pagination, logging, automatic token switching and static repository analysis",
   "homepage": "https://github.com/mohatt/github-api-utils",
   "keywords": ["github", "authentication", "api", "utility"],
   "license": "MIT",
