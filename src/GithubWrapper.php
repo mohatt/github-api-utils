@@ -219,30 +219,44 @@ class GithubWrapper implements GithubWrapperInterface
             return $this->call($callback, ++$retries);
         }
 
+        $rateLimitReached = 0;
         try {
             // Apply the token to the client
             $this->authenticate($token);
             // Invoke the api call
             $result = $this->invoke($callback);
         } catch (Github\Exception\ApiLimitExceedException $e) {
+            $rateLimitReached = $e->getResetTime();
+        } catch (Github\Exception\RuntimeException $e) {
+            // Sometimes knplabs/github-api fails to detect Github's Rate limiting headers so we'll handle this manually
+            if (!str_contains(strtolower($e->getMessage()), 'rate limit exceeded')) {
+                throw $e;
+
+            }
+
+            // We dont know the actual reset time in this case so we'll set it 10 minutes from now
+            $rateLimitReached = time() + 600;
+        }
+
+        if ($rateLimitReached) {
             // Token expired
             $this->logger
-                && $this->logger->warning(sprintf(
-                    'Github token %s rate limit reached for scope %s! Getting a new token from the pool',
-                    $token->getId(true),
-                    $scope
-                ));
+            && $this->logger->warning(sprintf(
+                'Github token %s rate limit reached for scope %s! Getting a new token from the pool',
+                $token->getId(true),
+                $scope
+            ));
 
             // Get the next token in the pool
-            $this->scopeTokens[$scope] = $this->tokenPool->nextToken($scope, $e->getResetTime());
+            $this->scopeTokens[$scope] = $this->tokenPool->nextToken($scope, $rateLimitReached);
             $this->logger
-                && $this->logger->debug(
-                    sprintf(
-                        'Switched Github %s token to %s',
-                        $scope,
-                        $this->scopeTokens[$scope]->getId(true)
-                    )
-                );
+            && $this->logger->debug(
+                sprintf(
+                    'Switched Github %s token to %s',
+                    $scope,
+                    $this->scopeTokens[$scope]->getId(true)
+                )
+            );
 
             return $this->call($callback, ++$retries);
         }
