@@ -20,7 +20,7 @@ interface GithubTokenInterface
      * Checks whether the token can be used for {$scope} api calls or not. Returns true if it can,
      * otherwise it returns the number of seconds remaining until reset.
      */
-    public function canAccess(string $scope): int | bool;
+    public function canAccess(string $scope): bool|int;
 
     /**
      * Sets the token reset time and marks it as expired for {$scope} api calls.

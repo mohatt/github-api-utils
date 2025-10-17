@@ -7,6 +7,4 @@ namespace Github\Utils\RepoInspector\Exception;
 /**
  * Represents a failed inspection attempt.
  */
-class RepoInspectorException extends \RuntimeException
-{
-}
+class RepoInspectorException extends \RuntimeException {}

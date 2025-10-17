@@ -8,10 +8,7 @@ abstract class GithubTokenAbstract implements GithubTokenInterface
 {
     protected array $reset = [];
 
-    /**
-     * {@inheritdoc}
-     */
-    public function canAccess(string $scope): bool | int
+    public function canAccess(string $scope): bool|int
     {
         if (!isset($this->reset[$scope])) {
             return true;
@@ -22,9 +19,6 @@ abstract class GithubTokenAbstract implements GithubTokenInterface
         return $diff > 0 ? $diff : true;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function setReset(string $scope, int $reset): void
     {
         $this->reset[$scope] = $reset;

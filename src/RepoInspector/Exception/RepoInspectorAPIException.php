@@ -7,6 +7,4 @@ namespace Github\Utils\RepoInspector\Exception;
 /**
  * Represents a failed inspection attempt due to API failure.
  */
-class RepoInspectorAPIException extends RepoInspectorException
-{
-}
+class RepoInspectorAPIException extends RepoInspectorException {}

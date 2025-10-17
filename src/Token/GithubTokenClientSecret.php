@@ -16,25 +16,16 @@ class GithubTokenClientSecret extends GithubTokenAbstract implements GithubToken
         $this->id = 'cst#'.md5($client.$secret);
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getId(bool $short = false): string
     {
         return $short ? substr($this->id, 0, 8) : $this->id;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getClientID(): string
     {
         return $this->client;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getClientSecret(): string
     {
         return $this->secret;

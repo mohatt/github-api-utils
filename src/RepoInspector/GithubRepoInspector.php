@@ -7,13 +7,13 @@ namespace Github\Utils\RepoInspector;
 use Github\Exception\ExceptionInterface as GithubAPIException;
 use Github\Utils\GithubWrapperInterface;
 use Http\Client\Common\HttpMethodsClient;
-use Http\Client\HttpClient;
-use Http\Discovery\HttpClientDiscovery;
 use Http\Discovery\Psr17FactoryDiscovery;
+use Http\Discovery\Psr18ClientDiscovery;
+use Psr\Http\Client\ClientInterface;
 use Symfony\Component\DomCrawler;
 
 /**
- * Statistical analysis tool for github repositories.
+ * Statistical analysis tool for GitHub repositories.
  */
 class GithubRepoInspector implements GithubRepoInspectorInterface
 {
@@ -33,17 +33,14 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
     protected HttpMethodsClient $http;
 
-    public function __construct(protected GithubWrapperInterface $github, HttpClient | HttpMethodsClient $http = null)
+    public function __construct(protected GithubWrapperInterface $github, ClientInterface|HttpMethodsClient|null $http = null)
     {
-        $this->http = $http ?: HttpClientDiscovery::find();
+        $this->http = $http ?: Psr18ClientDiscovery::find();
         if (!$this->http instanceof HttpMethodsClient) {
             $this->http = new HttpMethodsClient($this->http, Psr17FactoryDiscovery::findRequestFactory());
         }
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function inspect(string $author, string $name): array
     {
         try {
@@ -51,6 +48,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $args = [$author, $name];
             $repo = $this->github->api('repo/show', $args);
             $participation = $this->github->api('repo/participation', $args);
+            // var_dump($repo['updated_at']);
+            // var_dump($repo['pushed_at']);
 
             // Fetch html to save API quota
             // Or we could sacrifice quota and make ~4 requests instead of 1 request
@@ -58,12 +57,14 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
             $commits = $htmlStats['commits'];
             $branches = $htmlStats['branches'];
+            $tags = $htmlStats['tags'];
             $releases = $htmlStats['releases'];
             $contributors = $htmlStats['contributors'];
+            $languages = $htmlStats['languages'];
         } catch (GithubAPIException $e) {
-            throw new Exception\RepoInspectorAPIException(sprintf('Github API request failed; %s', $e->getMessage()), $e->getCode(), $e);
+            throw new Exception\RepoInspectorAPIException(\sprintf('Github API request failed; %s', $e->getMessage()), $e->getCode(), $e);
         } catch (\Exception $e) {
-            throw new Exception\RepoInspectorCrawlerException(sprintf('Github repo stats request failed; %s', $e->getMessage()), $e->getCode(), $e);
+            throw new Exception\RepoInspectorCrawlerException(\sprintf('Github repo stats request failed; %s', $e->getMessage()), $e->getCode(), $e);
         }
 
         $stargazers = $repo['stargazers_count'];
@@ -129,17 +130,19 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
         $scores_avg = (int) round(($scores['p'] + $scores['a'] + $scores['m']) / 3);
 
-        $licence_id = $repo['license']['spdx_id'] ?? '';
-        if ($licence_id && \in_array(strtolower($licence_id), ['none', 'noassertion'])) {
-            $licence_id = '';
+        $license_id = $repo['license']['spdx_id'] ?? '';
+        if ($license_id && \in_array(strtolower($license_id), ['none', 'noassertion'])) {
+            $license_id = '';
         }
 
         return array_merge($this->stripResponseUrls($repo), [
-            'licence_id' => $licence_id,
+            'license_id' => $license_id,
             'commits_count' => $commits,
             'branches_count' => $branches,
+            'tags_count' => $tags,
             'releases_count' => $releases,
             'contributors_count' => $contributors,
+            'languages' => $languages,
             'scores' => $scores,
             'scores_avg' => $scores_avg,
         ]);
@@ -148,17 +151,19 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     /**
      * Fetches some repo stats from the repo html page (to save API quota).
      *
-     * @throws \RuntimeException
-     *
      * @return array<string, int>
+     *
+     * @throws \RuntimeException
      */
     protected function getHtmlStats(string $url): array
     {
         try {
             $html = $this->http->get($url);
             $html = (string) $html->getBody();
+            $countHtml = $this->http->get($url.'/branch-and-tag-count');
+            $countHtml = (string) $countHtml->getBody();
         } catch (\Exception $e) {
-            throw new \RuntimeException(sprintf('Unable to fetch repo page %s; %s', $url, $e->getMessage()), $e->getCode(), $e);
+            throw new \RuntimeException(\sprintf('Unable to fetch repo page %s; %s', $url, $e->getMessage()), $e->getCode(), $e);
         }
         $stats = [
             // Not all repos have these fields set
@@ -167,13 +172,12 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         ];
 
         try {
+            // Extract commits, releases, contributors
             $crawler = new DomCrawler\Crawler($html);
-            $crawler->filter('#repo-content-pjax-container .Link--primary')->each(function ($node) use (&$stats): void {
+            $crawler->filter('#repo-content-pjax-container a')->each(function ($node) use (&$stats): void {
                 $matches = [];
                 $subject = trim($node->text());
-                if (preg_match('/([\d,]+)\s+branch(?:es)?/i', $subject, $matches)) {
-                    $stats['branches'] = $matches[1];
-                } elseif (preg_match('/([\d,]+)\s+commits?/i', $subject, $matches)) {
+                if (preg_match('/([\d,]+)\s+commits?/i', $subject, $matches)) {
                     $stats['commits'] = $matches[1];
                 } elseif (preg_match('/releases\s+([\d,]+)/i', $subject, $matches)) {
                     $stats['releases'] = $matches[1];
@@ -182,14 +186,49 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
                 }
             });
 
-            if (\count($stats) < 4) {
+            // Extract branches/tags counts
+            $countCrawler = new DomCrawler\Crawler($countHtml);
+            $countCrawler->filter('a')->each(function ($node) use (&$stats): void {
+                $matches = [];
+                $subject = trim($node->text());
+                if (preg_match('/([\d,]+)\s+branch(?:es)?/i', $subject, $matches)) {
+                    $stats['branches'] = $matches[1];
+                } elseif (preg_match('/([\d,]+)\s+tags?/i', $subject, $matches)) {
+                    $stats['tags'] = $matches[1];
+                }
+            });
+
+            if (\count($stats) < 5) {
                 throw new \Exception('Unable to extract required fields with DomCrawler');
             }
+
+            // Extract languages
+            $languages = [];
+            $languageSection = $crawler->filter('h2:contains("Languages")')->closest('div');
+            if ($languageSection->count()) {
+                $languageSection->filter('ul > li')->each(function ($li) use (&$languages): void {
+                    if (preg_match('/([\p{L}+#\-\s]+)\s+([\d.]+)%/u', $li->text(), $m)) {
+                        $languages[] = [
+                            'name' => trim($m[1]),
+                            'percent' => (float) $m[2],
+                        ];
+                    }
+                });
+            }
+            // Add languages to stats
+            $stats['languages'] = $languages;
         } catch (\Exception $e) {
-            throw new \RuntimeException(sprintf('Unable to parse repo page %s; %s', $url, $e->getMessage()), $e->getCode(), $e);
+            throw new \RuntimeException(\sprintf('Unable to parse repo page %s; %s', $url, $e->getMessage()), $e->getCode(), $e);
         }
 
-        return array_map(static fn ($text) => (int) preg_replace('/\D/', '', $text), $stats);
+        // Convert numeric fields while keeping languages as-is
+        foreach ($stats as $key => &$value) {
+            if ('languages' !== $key) {
+                $value = (int) preg_replace('/\D/', '', (string) $value);
+            }
+        }
+
+        return $stats;
     }
 
     /**
@@ -203,7 +242,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             } elseif ('html_url' === $k) {
                 $json['url'] = $v;
                 unset($json[$k]);
-            } elseif ('avatar_url' !== $k && str_contains($k, '_url')) {
+            } elseif ('avatar_url' !== $k && str_contains((string) $k, '_url')) {
                 unset($json[$k]);
             }
         }

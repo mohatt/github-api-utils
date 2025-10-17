@@ -32,9 +32,6 @@ class GithubTokenPool implements GithubTokenPoolInterface
         }
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function setTokens(array $tokens, bool $purge = false): void
     {
         if ($purge) {
@@ -46,17 +43,11 @@ class GithubTokenPool implements GithubTokenPoolInterface
         $this->merge($tokens);
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getTokens(): array
     {
         return $this->read();
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getToken(string $scope): GithubTokenInterface
     {
         $tokens = $this->read();
@@ -80,9 +71,6 @@ class GithubTokenPool implements GithubTokenPoolInterface
         return $this->current[$scope] = $best;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function nextToken(string $scope, int $reset): GithubTokenInterface
     {
         if (time() >= $reset) {
@@ -90,7 +78,7 @@ class GithubTokenPool implements GithubTokenPoolInterface
         }
 
         if (empty($this->current[$scope])) {
-            throw new \LogicException(sprintf("No current token were found for scope '%s'; You need to call getToken() first", $scope));
+            throw new \LogicException(\sprintf("No current token were found for scope '%s'; You need to call getToken() first", $scope));
         }
 
         $token = $this->current[$scope];
@@ -103,10 +91,10 @@ class GithubTokenPool implements GithubTokenPoolInterface
     /**
      * Fetches the pool tokens.
      *
+     * @return GithubTokenInterface[]
+     *
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
-     *
-     * @return GithubTokenInterface[]
      */
     protected function read(): array
     {
@@ -115,18 +103,18 @@ class GithubTokenPool implements GithubTokenPoolInterface
         }
 
         if (false === $pool = file_get_contents($this->pool)) {
-            throw new \RuntimeException(sprintf('Unable to read token pool file; %s', $this->pool));
+            throw new \RuntimeException(\sprintf('Unable to read token pool file; %s', $this->pool));
         }
 
         $pool = unserialize($pool);
         if (!\is_array($pool)) {
-            throw new \UnexpectedValueException(sprintf('Unexpected token pool data; Expected array but got %s', \gettype($pool)));
+            throw new \UnexpectedValueException(\sprintf('Unexpected token pool data; Expected array but got %s', \gettype($pool)));
         }
 
         $nullToken = null;
         foreach ($pool as $id => $token) {
             if (!$token instanceof GithubTokenInterface) {
-                throw new \UnexpectedValueException(sprintf('The tokens pool has an invalid token instance at index#%s', $id));
+                throw new \UnexpectedValueException(\sprintf('The tokens pool has an invalid token instance at index#%s', $id));
             }
 
             if ($token instanceof GithubTokenNull) {
@@ -155,7 +143,7 @@ class GithubTokenPool implements GithubTokenPoolInterface
     {
         foreach ($tokens as $index => $token) {
             if (!$token instanceof GithubTokenInterface) {
-                throw new \InvalidArgumentException(sprintf(
+                throw new \InvalidArgumentException(\sprintf(
                     'The provided tokens for write has an invalid token at index#%s',
                     $index
                 ));
@@ -163,7 +151,7 @@ class GithubTokenPool implements GithubTokenPoolInterface
         }
 
         if (false === file_put_contents($this->pool, serialize($tokens), \LOCK_EX)) {
-            throw new \RuntimeException(sprintf('Unable to write token pool file; %s', $this->pool));
+            throw new \RuntimeException(\sprintf('Unable to write token pool file; %s', $this->pool));
         }
     }
 
@@ -182,7 +170,7 @@ class GithubTokenPool implements GithubTokenPoolInterface
         $pool = $this->read();
         foreach ($tokens as $index => $token) {
             if (!$token instanceof GithubTokenInterface) {
-                throw new \InvalidArgumentException(sprintf(
+                throw new \InvalidArgumentException(\sprintf(
                     'The provided tokens for merge has an invalid token at index#%s',
                     $index
                 ));

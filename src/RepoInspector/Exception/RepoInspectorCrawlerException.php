@@ -7,6 +7,4 @@ namespace Github\Utils\RepoInspector\Exception;
 /**
  * Represents a failed inspection attempt due to crawler failure.
  */
-class RepoInspectorCrawlerException extends RepoInspectorException
-{
-}
+class RepoInspectorCrawlerException extends RepoInspectorException {}

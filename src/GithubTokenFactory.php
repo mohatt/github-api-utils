@@ -19,10 +19,7 @@ class GithubTokenFactory implements GithubTokenFactoryInterface
         self::TOKEN_CLIENT_SECRET,
     ];
 
-    /**
-     * {@inheritdoc}
-     */
-    public static function create(string | array $type, ...$params): array | Token\GithubTokenInterface
+    public static function create(array|string $type, ...$params): array|Token\GithubTokenInterface
     {
         if (empty($type)) {
             throw new \UnexpectedValueException('Expected non empty token type');
@@ -32,7 +29,7 @@ class GithubTokenFactory implements GithubTokenFactoryInterface
             $instances = [];
             foreach ($type as $i => $tokenArr) {
                 if (!\is_array($tokenArr) || empty($tokenArr[0]) || !\is_string($tokenArr[0])) {
-                    throw new \UnexpectedValueException(sprintf(
+                    throw new \UnexpectedValueException(\sprintf(
                         'Expected an array with at least 1 string element, got %s',
                         var_export($tokenArr, true)
                     ));
@@ -56,16 +53,13 @@ class GithubTokenFactory implements GithubTokenFactoryInterface
                     return new Token\GithubTokenClientSecret(...$params);
             }
         } catch (\Exception $e) {
-            throw new \RuntimeException(sprintf("Failed creating new github token of type '%s'; %s", $type, $e->getMessage()), $e->getCode(), $e);
+            throw new \RuntimeException(\sprintf("Failed creating new github token of type '%s'; %s", $type, $e->getMessage()), $e->getCode(), $e);
         }
 
-        throw new \UnexpectedValueException(sprintf("Unsupported github token type '%s'", $type));
+        throw new \UnexpectedValueException(\sprintf("Unsupported github token type '%s'", $type));
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public static function supports(string $type = null): array | bool
+    public static function supports(?string $type = null): array|bool
     {
         if (0 === \func_num_args()) {
             return self::$supports;

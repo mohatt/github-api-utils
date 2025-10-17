@@ -28,7 +28,7 @@ class GithubWrapper implements GithubWrapperInterface
      * @param null|GithubTokenInterface|GithubTokenPoolInterface $token  Could be a single token or a tokenPool instance
      * @param null|LoggerInterface                               $logger An optional PSR-3 logger instance
      */
-    public function __construct(Github\Client $client = null, GithubTokenPoolInterface | GithubTokenInterface $token = null, protected ?LoggerInterface $logger = null)
+    public function __construct(?Github\Client $client = null, GithubTokenInterface|GithubTokenPoolInterface|null $token = null, protected ?LoggerInterface $logger = null)
     {
         $this->client = $client ?: new Github\Client();
         $this->pager = new Github\ResultPager($this->client);
@@ -40,58 +40,37 @@ class GithubWrapper implements GithubWrapperInterface
         }
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getClient(): Github\Client
     {
         return $this->client;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getPager(): Github\ResultPager
     {
         return $this->pager;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getTokenPool(): GithubTokenPoolInterface
     {
         return $this->tokenPool;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function setTokenPool(GithubTokenPoolInterface $tokenPool): void
     {
         $this->tokenPool = $tokenPool;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getToken(): GithubTokenInterface
     {
         return $this->token;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function hasCustomToken(): bool
     {
         return $this->hasCustomToken;
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function setToken(GithubTokenInterface $token = null): void
+    public function setToken(?GithubTokenInterface $token = null): void
     {
         $this->hasCustomToken = true;
         if (null === $token) {
@@ -101,22 +80,16 @@ class GithubWrapper implements GithubWrapperInterface
         $this->authenticate($token);
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function isAuthenticated(): bool
     {
-        return $this->token instanceof Token\GithubTokenInterface && !$this->token instanceof Token\GithubTokenNull;
+        return $this->token instanceof GithubTokenInterface && !$this->token instanceof Token\GithubTokenNull;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function api(string $path, array $args = [], bool $full = false): mixed
     {
         $segments = explode('/', $path);
         if (\count($segments) <= 1) {
-            throw new \InvalidArgumentException(sprintf("Invalid Github API path '%s'; No method is provided", $path));
+            throw new \InvalidArgumentException(\sprintf("Invalid Github API path '%s'; No method is provided", $path));
         }
 
         $instance = $this->client->api(array_shift($segments));
@@ -127,8 +100,7 @@ class GithubWrapper implements GithubWrapperInterface
 
         $callback = fn () => $full
             ? $this->pager->fetchAll($instance, $method, $args)
-            : $this->pager->fetch($instance, $method, $args)
-        ;
+            : $this->pager->fetch($instance, $method, $args);
 
         if ($this->hasCustomToken()) {
             return $this->invoke($callback);
@@ -150,17 +122,11 @@ class GithubWrapper implements GithubWrapperInterface
         return $this->call($callback);
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function hasNext(): bool
     {
         return $this->pager->hasNext();
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function next(): mixed
     {
         if (!isset($this->tokenPool)) {
@@ -170,9 +136,6 @@ class GithubWrapper implements GithubWrapperInterface
         return $this->call(fn () => $this->pager->fetchNext());
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function last(): mixed
     {
         if (!isset($this->tokenPool)) {
@@ -200,14 +163,14 @@ class GithubWrapper implements GithubWrapperInterface
             $this->scopeTokens[$scope] = $this->tokenPool->getToken($scope);
         }
 
-        /** @var Token\GithubTokenInterface $token */
+        /** @var GithubTokenInterface $token */
         $token = $this->scopeTokens[$scope];
         $tokenAllowed = $token->canAccess($scope);
 
         if (\is_int($tokenAllowed)) {
             // Wait for the token to reset
             $this->logger
-                && $this->logger->warning(sprintf(
+                && $this->logger->warning(\sprintf(
                     'Current Github token [%s: %s] will reset in %d minutes, sleeping...',
                     $scope,
                     $token->getId(true),
@@ -220,6 +183,7 @@ class GithubWrapper implements GithubWrapperInterface
         }
 
         $rateLimitReached = 0;
+
         try {
             // Apply the token to the client
             $this->authenticate($token);
@@ -231,7 +195,6 @@ class GithubWrapper implements GithubWrapperInterface
             // Sometimes knplabs/github-api fails to detect Github's Rate limiting headers so we'll handle this manually
             if (!str_contains(strtolower($e->getMessage()), 'rate limit exceeded')) {
                 throw $e;
-
             }
 
             // We dont know the actual reset time in this case so we'll set it 10 minutes from now
@@ -241,7 +204,7 @@ class GithubWrapper implements GithubWrapperInterface
         if ($rateLimitReached) {
             // Token expired
             $this->logger
-            && $this->logger->warning(sprintf(
+            && $this->logger->warning(\sprintf(
                 'Github token %s rate limit reached for scope %s! Getting a new token from the pool',
                 $token->getId(true),
                 $scope
@@ -251,7 +214,7 @@ class GithubWrapper implements GithubWrapperInterface
             $this->scopeTokens[$scope] = $this->tokenPool->nextToken($scope, $rateLimitReached);
             $this->logger
             && $this->logger->debug(
-                sprintf(
+                \sprintf(
                     'Switched Github %s token to %s',
                     $scope,
                     $this->scopeTokens[$scope]->getId(true)
@@ -275,7 +238,7 @@ class GithubWrapper implements GithubWrapperInterface
 
         $result = $callback();
         if (\is_object($result)) {
-            throw new \UnexpectedValueException(sprintf("Expected API response but got an '%s' object", \gettype($result)));
+            throw new \UnexpectedValueException(\sprintf("Expected API response but got an '%s' object", \gettype($result)));
         }
 
         $code = $this->client->getLastResponse()->getStatusCode();
@@ -324,6 +287,6 @@ class GithubWrapper implements GithubWrapperInterface
             return;
         }
 
-        throw new \UnexpectedValueException(sprintf("Unsupported token provided of type '%s'", \get_class($token)));
+        throw new \UnexpectedValueException(\sprintf("Unsupported token provided of type '%s'", $token::class));
     }
 }

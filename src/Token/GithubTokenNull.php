@@ -9,9 +9,6 @@ namespace Github\Utils\Token;
  */
 class GithubTokenNull extends GithubTokenAbstract
 {
-    /**
-     * {@inheritdoc}
-     */
     public function getId(bool $short = false): string
     {
         return 'null';

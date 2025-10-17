@@ -39,7 +39,7 @@ interface GithubWrapperInterface
     /**
      * Sets a custom token to be used for authentication, if no token is provided it creates a GithubTokenNull token.
      */
-    public function setToken(Token\GithubTokenInterface $token = null): void;
+    public function setToken(?Token\GithubTokenInterface $token = null): void;
 
     /**
      * Checks whether or not a custom token has been defined.

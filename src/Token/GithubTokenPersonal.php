@@ -16,17 +16,11 @@ class GithubTokenPersonal extends GithubTokenAbstract implements GithubTokenPers
         $this->id = 'pat#'.md5($token);
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getId(bool $short = false): string
     {
         return $short ? substr($this->id, 0, 8) : $this->id;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getToken(): string
     {
         return $this->token;
