@@ -102,11 +102,30 @@ class GithubTokenPool implements GithubTokenPoolInterface
             return [];
         }
 
-        if (false === $pool = file_get_contents($this->pool)) {
+        $handle = fopen($this->pool, 'r');
+        if (false === $handle) {
             throw new \RuntimeException(\sprintf('Unable to read token pool file; %s', $this->pool));
         }
 
-        $pool = unserialize($pool);
+        try {
+            if (!flock($handle, \LOCK_SH)) {
+                throw new \RuntimeException(\sprintf('Unable to acquire read lock for token pool file; %s', $this->pool));
+            }
+
+            $contents = stream_get_contents($handle);
+            if (false === $contents) {
+                throw new \RuntimeException(\sprintf('Unable to read token pool file; %s', $this->pool));
+            }
+        } finally {
+            flock($handle, \LOCK_UN);
+            fclose($handle);
+        }
+
+        if ('' === $contents) {
+            return [];
+        }
+
+        $pool = @unserialize($contents);
         if (!\is_array($pool)) {
             throw new \UnexpectedValueException(\sprintf('Unexpected token pool data; Expected array but got %s', \gettype($pool)));
         }
@@ -150,8 +169,35 @@ class GithubTokenPool implements GithubTokenPoolInterface
             }
         }
 
-        if (false === file_put_contents($this->pool, serialize($tokens), \LOCK_EX)) {
+        $directory = \dirname($this->pool);
+        if (!is_dir($directory) && !@mkdir($directory, 0777, true) && !is_dir($directory)) {
+            throw new \RuntimeException(\sprintf('Unable to create token pool directory; %s', $directory));
+        }
+
+        $handle = fopen($this->pool, 'c');
+        if (false === $handle) {
             throw new \RuntimeException(\sprintf('Unable to write token pool file; %s', $this->pool));
+        }
+
+        $serialized = serialize($tokens);
+
+        try {
+            if (!flock($handle, \LOCK_EX)) {
+                throw new \RuntimeException(\sprintf('Unable to acquire write lock for token pool file; %s', $this->pool));
+            }
+
+            if (!ftruncate($handle, 0)) {
+                throw new \RuntimeException(\sprintf('Unable to truncate token pool file; %s', $this->pool));
+            }
+
+            if (false === fwrite($handle, $serialized)) {
+                throw new \RuntimeException(\sprintf('Unable to write token pool file; %s', $this->pool));
+            }
+
+            fflush($handle);
+        } finally {
+            flock($handle, \LOCK_UN);
+            fclose($handle);
         }
     }
 
