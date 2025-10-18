@@ -36,7 +36,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
     private const HOT_RECENT_WEEKS = 4;
     private const HOT_PUSH_HALF_LIFE_WEEKS = 4.0;
-    private const HOT_TREND_DECAY_WEEKS = 156.0;
+    private const HOT_TREND_DECAY_WEEKS = 250.0;
 
     private const ACTIVITY_ANNUAL_COMMITS_REF = 1200;
 
@@ -106,9 +106,9 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $activeWeeks = \count(array_filter($participationAll, static fn ($count): bool => (int) $count > 0));
 
         $popularityScore = 100 * (
-            0.5 * $this->normalizeLogScale($stargazers, self::POPULARITY_STAR_REF)
+            0.6 * $this->normalizeLogScale($stargazers, self::POPULARITY_STAR_REF)
             + 0.2 * $this->normalizeLogScale($subscribers, self::POPULARITY_SUBSCRIBER_REF)
-            + 0.3 * $this->normalizeLogScale($forks, self::POPULARITY_FORK_REF)
+            + 0.2 * $this->normalizeLogScale($forks, self::POPULARITY_FORK_REF)
         );
 
         $recencyScore = 0.5 ** ($weeksSincePush / self::HOT_PUSH_HALF_LIFE_WEEKS);
@@ -124,9 +124,9 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $agePenalty = 1 / (1 + ($tdCreatedWeeks / self::HOT_TREND_DECAY_WEEKS));
         }
         $hotScore = 100 * (
-            (0.45 * $recencyScore)
-            + (0.35 * $momentumFactor)
-            + (0.20 * $popularityMomentum)
+            (0.15 * $recencyScore)
+            + (0.15 * $momentumFactor)
+            + (0.7 * $popularityMomentum)
         ) * $agePenalty;
 
         $activityVolumeScore = $this->normalizePowerScale($annualCommits, self::ACTIVITY_ANNUAL_COMMITS_REF, 0.6);
