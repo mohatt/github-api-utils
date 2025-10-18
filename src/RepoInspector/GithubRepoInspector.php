@@ -236,9 +236,9 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
             // Extract languages
             $languages = [];
-            $languageSection = $crawler->filter('h2:contains("Languages")')->closest('div');
+            $languageSection = $crawler->filter('h2:contains("Languages")');
             if ($languageSection->count()) {
-                $languageSection->filter('ul > li')->each(function ($li) use (&$languages): void {
+                $languageSection->closest('div')->filter('ul > li')->each(function ($li) use (&$languages): void {
                     if (preg_match('/([\p{L}+#\-\s]+)\s+([\d.]+)%/u', $li->text(), $m)) {
                         $languages[] = [
                             'name' => trim($m[1]),
