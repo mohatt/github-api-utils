@@ -14,22 +14,37 @@ use Symfony\Component\DomCrawler;
 
 /**
  * Statistical analysis tool for GitHub repositories.
+ *
+ * This inspector consolidates GitHub API and scraped HTML metadata into the PHAM
+ * score bundle:
+ *
+ *  • Popularity benchmarks against 50k stars, 5k subscribers, 10k forks (values above those references exceed 100).
+ *  • Hotness mixes latest pushes, short-term commit momentum, and popularity; recent surges land around 100, dramatic spikes can exceed it.
+ *  • Activity compares annual commits (1.2k reference) and active weeks (52 reference).
+ *  • Maturity weighs total commits (5k), releases (100), contributors (200), age (~4 years), and size (500 MB).
+ *
+ * Scores are left unbounded for relative sorting, but crossing the reference profile typically yields ≈100.
  */
 class GithubRepoInspector implements GithubRepoInspectorInterface
 {
     /**
-     * Score calculation constants.
+     * Score calibration constants.
      */
-    private const R_HOT_WEEKS = 1;
-    private const R_HOT_GRAVITY = 1.0;
-    private const R_POP_STARS_FACTOR = 1.5;
-    private const R_POP_SUBSCRIBERS_FACTOR = 1.6;
-    private const R_POP_FORKS_FACTOR = 1.7;
-    private const R_MATURITY_COMMITS_FACTOR = 1.2;
-    private const R_MATURITY_RELEASES_FACTOR = 1.8;
-    private const R_MATURITY_CONTRIBS_FACTOR = 1.5;
-    private const R_MATURITY_AGE_FACTOR = 1.0;
-    private const R_ACTIVITY_WEEK_MIN = 15;
+    private const POPULARITY_STAR_REF = 50000;
+    private const POPULARITY_SUBSCRIBER_REF = 5000;
+    private const POPULARITY_FORK_REF = 10000;
+
+    private const HOT_RECENT_WEEKS = 4;
+    private const HOT_PUSH_HALF_LIFE_WEEKS = 4.0;
+    private const HOT_TREND_DECAY_WEEKS = 156.0;
+
+    private const ACTIVITY_ANNUAL_COMMITS_REF = 1200;
+
+    private const MATURITY_COMMITS_REF = 5000;
+    private const MATURITY_RELEASES_REF = 100;
+    private const MATURITY_CONTRIBUTORS_REF = 200;
+    private const MATURITY_AGE_REF_WEEKS = 52 * 4;
+    private const MATURITY_SIZE_REF = 500;
 
     protected HttpMethodsClient $http;
 
@@ -41,6 +56,15 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         }
     }
 
+    /**
+     * Returns merged repository metadata and scoring metrics.
+     *
+     * The payload mirrors the GitHub repo JSON with URLs stripped plus:
+     *  - scores.p/h/a/m : integer PHAM scores (unbounded, ~100 marks the reference profile described in the class docs).
+     *  - scores_avg     : integer average of popularity/activity/maturity.
+     *
+     * @return array<string, mixed>
+     */
     public function inspect(string $author, string $name): array
     {
         try {
@@ -48,11 +72,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $args = [$author, $name];
             $repo = $this->github->api('repo/show', $args);
             $participation = $this->github->api('repo/participation', $args);
-            // var_dump($repo['updated_at']);
-            // var_dump($repo['pushed_at']);
 
-            // Fetch html to save API quota
-            // Or we could sacrifice quota and make ~4 requests instead of 1 request
+            // Fetch HTML to save API quota (Otherwise we'd make ~4 requests instead of 1 request)
             $htmlStats = $this->getHtmlStats($repo['html_url']);
 
             $commits = $htmlStats['commits'];
@@ -67,66 +88,77 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             throw new Exception\RepoInspectorCrawlerException(\sprintf('Github repo stats request failed; %s', $e->getMessage()), $e->getCode(), $e);
         }
 
-        $stargazers = $repo['stargazers_count'];
-        $subscribers = $repo['subscribers_count'];
-        $forks = $repo['forks_count'];
+        $now = time();
+        $stargazers = (int) $repo['stargazers_count'];
+        $subscribers = (int) $repo['subscribers_count'];
+        $forks = (int) $repo['forks_count'];
         $sizeMb = $repo['size'] / 1000;
-        $tdCreatedWeeks = (time() - strtotime($repo['created_at'])) / 604800;
 
-        // Popularity score
-        $popularity = ((log($stargazers) * sqrt($stargazers) * 4 * self::R_POP_STARS_FACTOR)
-                        + (log($subscribers) * sqrt($subscribers) * 4 * self::R_POP_SUBSCRIBERS_FACTOR)
-                        + (log($forks) * sqrt($forks) * 4 * self::R_POP_FORKS_FACTOR));
-
-        // Hotness score
-        $hot = $popularity / (($tdCreatedWeeks + self::R_HOT_WEEKS) ** self::R_HOT_GRAVITY) * 10;
-
-        // Activity score
-        $partScore = 0;
-        $partWeeks = 0;
-        foreach ($participation['all'] as $partCommits) {
-            if ($partCommits > 0) {
-                $partScore += $partCommits / self::R_ACTIVITY_WEEK_MIN;
-                ++$partWeeks;
-            }
-        }
-        // Weeks prior to repo creation
-        $gift = 52 - ceil(min($tdCreatedWeeks, 52));
-        $giftValue = 0;
-        if ($partWeeks > 0) {
-            $giftValue = min($partScore / $partWeeks, 0.5);
-            // Adjust the gift value for low activity repos
-            if ($partWeeks < 8) {
-                $giftValue = min($giftValue, 0.2);
-            }
+        $participationAll = [];
+        if (isset($participation['all']) && \is_array($participation['all'])) {
+            $participationAll = $participation['all'];
         }
 
-        // Optimal is 52*52 => 2704
-        $activity = ($partScore + ($gift * $giftValue)) * ($partWeeks + $gift);
+        $tdCreatedWeeks = max(0.0, ($now - strtotime($repo['created_at'])) / 604800);
+        $weeksSincePush = $this->weeksSince($repo['pushed_at'] ?? ($repo['updated_at'] ?? null), $now);
+        $recentCommits = $this->sumRecentWeeks($participationAll, self::HOT_RECENT_WEEKS);
+        $annualCommits = array_sum($participationAll);
+        $activeWeeks = \count(array_filter($participationAll, static fn ($count): bool => (int) $count > 0));
 
-        // Maturity score
-        $maturity = (log($commits) * sqrt($commits) * self::R_MATURITY_COMMITS_FACTOR)
-            + ($releases * 10 * self::R_MATURITY_RELEASES_FACTOR)
-            + ($contributors * 10 * self::R_MATURITY_CONTRIBS_FACTOR)
-            + log10($releases + $contributors) * 500;
-        $maturity += log($maturity) * ($maturity ** 0.35) * ($tdCreatedWeeks / 52) * self::R_MATURITY_AGE_FACTOR;
-        // No need to consider the size factor, if the maturity score is already too low
-        if ($maturity > 500) {
-            // Since big size doesn't always mean better quality
-            //  We will add its raw value in MB
-            $maturity += $sizeMb;
-            // Help low-sized repos (with relatively good maturity score) get better score
-            // This value will increase as the maturity-size gap increases
-            $maturity += log($maturity) * ($maturity / (max($sizeMb, 1) * 5));
+        $popularityScore = 100 * (
+            0.5 * $this->normalizeLogScale($stargazers, self::POPULARITY_STAR_REF)
+            + 0.2 * $this->normalizeLogScale($subscribers, self::POPULARITY_SUBSCRIBER_REF)
+            + 0.3 * $this->normalizeLogScale($forks, self::POPULARITY_FORK_REF)
+        );
+
+        $recencyScore = 0.5 ** ($weeksSincePush / self::HOT_PUSH_HALF_LIFE_WEEKS);
+        $popularityMomentum = min(1.0, $popularityScore / 100);
+
+        $averageWeeklyCommits = $annualCommits > 0 ? $annualCommits / 52 : 0;
+        $baselineRecent = max(1.0, $averageWeeklyCommits * self::HOT_RECENT_WEEKS);
+        $momentumRatio = $baselineRecent > 0 ? $recentCommits / $baselineRecent : 0.0;
+        $momentumFactor = $momentumRatio > 0 ? log1p($momentumRatio) : 0.0;
+
+        $agePenalty = 1.0;
+        if (self::HOT_TREND_DECAY_WEEKS > 0.0) {
+            $agePenalty = 1 / (1 + ($tdCreatedWeeks / self::HOT_TREND_DECAY_WEEKS));
         }
+        $hotScore = 100 * (
+            (0.45 * $recencyScore)
+            + (0.35 * $momentumFactor)
+            + (0.20 * $popularityMomentum)
+        ) * $agePenalty;
 
-        // PHAM score
-        $scores = [
-            'p' => (int) ceil($popularity),
-            'h' => (int) ceil($hot),
-            'a' => (int) ceil($activity),
-            'm' => (int) ceil($maturity),
-        ];
+        $activityVolumeScore = $this->normalizePowerScale($annualCommits, self::ACTIVITY_ANNUAL_COMMITS_REF, 0.6);
+        $consistencyScore = $this->normalizeLinearScale($activeWeeks, 52);
+        $activityScore = 100 * (
+            0.65 * $activityVolumeScore
+            + 0.35 * $consistencyScore
+        );
+
+        $commitScore = $this->normalizePowerScale($commits, self::MATURITY_COMMITS_REF, 0.55);
+        $releaseScore = $this->normalizePowerScale($releases, self::MATURITY_RELEASES_REF, 0.45);
+        $contributorScore = $this->normalizePowerScale($contributors, self::MATURITY_CONTRIBUTORS_REF, 0.5);
+        $ageScore = $this->normalizeLogScale($tdCreatedWeeks, self::MATURITY_AGE_REF_WEEKS);
+        $sizeScore = $this->normalizePowerScale(max($sizeMb, 0), self::MATURITY_SIZE_REF, 0.35);
+        $maturityScore = 100 * (
+            0.35 * $commitScore
+            + 0.2 * $releaseScore
+            + 0.25 * $contributorScore
+            + 0.15 * $ageScore
+            + 0.05 * $sizeScore
+        );
+
+        // PHAM score (Popularity, Hotness, Activity, Maturity)
+        $scores = array_map(
+            static fn (float $value): int => (int) round($value),
+            [
+                'p' => $popularityScore,
+                'h' => $hotScore,
+                'a' => $activityScore,
+                'm' => $maturityScore,
+            ]
+        );
 
         $scores_avg = (int) round(($scores['p'] + $scores['a'] + $scores['m']) / 3);
 
@@ -248,5 +280,74 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         }
 
         return $json;
+    }
+
+    private function normalizeLogScale(float $value, float $reference): float
+    {
+        if ($value <= 0.0) {
+            return 0.0;
+        }
+
+        if ($reference <= 0.0) {
+            return log1p($value);
+        }
+
+        return log1p($value) / log1p($reference);
+    }
+
+    private function normalizeLinearScale(float $value, float $reference): float
+    {
+        if ($value <= 0.0) {
+            return 0.0;
+        }
+
+        if ($reference <= 0.0) {
+            return $value;
+        }
+
+        return $value / $reference;
+    }
+
+    private function normalizePowerScale(float $value, float $reference, float $exponent = 1.0): float
+    {
+        if ($value <= 0.0) {
+            return 0.0;
+        }
+
+        $reference = max($reference, 1.0);
+        $ratio = $value / $reference;
+        if ($ratio <= 0.0) {
+            return 0.0;
+        }
+
+        return $ratio ** $exponent;
+    }
+
+    private function weeksSince(?string $date, int $now): float
+    {
+        if (!$date) {
+            return 52.0;
+        }
+
+        $timestamp = strtotime($date);
+        if (false === $timestamp) {
+            return 52.0;
+        }
+
+        return max(0.0, ($now - $timestamp) / 604800);
+    }
+
+    /**
+     * @param array<int, int|string> $participation
+     */
+    private function sumRecentWeeks(array $participation, int $window): int
+    {
+        if ($window <= 0 || empty($participation)) {
+            return 0;
+        }
+
+        $recent = \array_slice($participation, -$window);
+
+        return (int) array_sum(array_map('intval', $recent));
     }
 }
