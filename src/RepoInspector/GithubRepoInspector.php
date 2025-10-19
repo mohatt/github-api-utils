@@ -50,6 +50,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     private const MATURITY_AGE_REF_WEEKS = 52 * 4;
     private const MATURITY_SIZE_REF = 500;
 
+    private const HIGHLIGHT_KEYWORD_THRESHOLD = 500;
+
     protected HttpMethodsClient $http;
 
     public function __construct(protected GithubWrapperInterface $github, ClientInterface|HttpMethodsClient|null $http = null)
@@ -165,8 +167,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             'recentCommits' => $recentCommits,
             'baselineRecent' => $baselineRecent,
             'weeksSincePush' => $weeksSincePush,
-            'annualCommits' => $annualCommits,
             'activeWeeks' => $activeWeeks,
+            'averageWeeklyCommits' => $averageWeeklyCommits,
             'tdCreatedWeeks' => $tdCreatedWeeks,
             'commits' => $commits,
             'contributors' => $contributors,
@@ -392,8 +394,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      *     recentCommits: int,
      *     baselineRecent: float,
      *     weeksSincePush: float,
-     *     annualCommits: int,
      *     activeWeeks: int,
+     *     averageWeeklyCommits: int,
      *     tdCreatedWeeks: float,
      *     commits: int,
      *     contributors: int,
@@ -407,7 +409,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $dimensionScores = $context['scores'];
         arsort($dimensionScores);
 
-        foreach (array_keys($dimensionScores) as $dimension) {
+        foreach ($dimensionScores as $dimension => $score) {
             $highlight = match ($dimension) {
                 'popularity' => $this->buildPopularityHighlight($context),
                 'hotness' => $this->buildHotnessHighlight($context),
@@ -416,6 +418,11 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             };
 
             if (null !== $highlight) {
+                if ($score < self::HIGHLIGHT_KEYWORD_THRESHOLD) {
+                    $highlightSegments = explode(' • ', $highlight['message'], 2);
+                    $highlight['message'] = $highlightSegments[1];
+                }
+
                 return $highlight;
             }
         }
@@ -512,23 +519,18 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $weeks = self::HOT_RECENT_WEEKS;
         $weekLabel = 'weeks';
         $paceRatio = $context['baselineRecent'] > 0 ? $context['recentCommits'] / $context['baselineRecent'] : 0;
-        $starsCount = max(0, $context['stargazers']);
+        $starsCount = $context['stargazers'];
         $stars = $this->formatCompactNumber($starsCount);
         $starLabel = 'stars';
         $popScore = $context['scores']['popularity'];
         $hotScore = $context['scores']['hotness'];
-        $ageWeeks = max(0, $context['tdCreatedWeeks']);
+        $ageWeeks = $context['tdCreatedWeeks'];
         $ageLabel = $this->formatAge($ageWeeks);
         $isYoung = $ageWeeks > 0 && $ageWeeks <= 52;
-        $recentPush = $context['weeksSincePush'] <= 1;
+        $recentPush = $context['weeksSincePush'] <= 1 && $recentCommitsCount >= $weeks;
         $hasStars = $starsCount >= self::HOT_HIGHLIGHT_STAR_THRESHOLD;
 
-        $shouldSkipHighlight = !$hasStars
-            && !$recentPush
-            && $paceRatio < 1.2
-            && $recentCommitsCount <= $weeks;
-
-        if ($shouldSkipHighlight) {
+        if (!$hasStars && !$recentPush && $paceRatio < 1.2) {
             return null;
         }
 
@@ -536,8 +538,6 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $hasStars && $isYoung => \sprintf('Fast climb • %s %s in %s', $stars, $starLabel, $ageLabel),
             $recentPush && $hasStars => \sprintf('Fresh buzz • %s %s + recent push', $stars, $starLabel),
             $recentPush => \sprintf('Fresh buzz • %s %s over %d %s', $recentCommits, $commitLabel, $weeks, $weekLabel),
-            $paceRatio >= 1.5 && $hasStars => \sprintf('Momentum spike • %s %s & %sx commits', $stars, $starLabel, $this->formatDecimal($paceRatio)),
-            $paceRatio >= 1.5 => \sprintf('Momentum spike • %sx commits', $this->formatDecimal($paceRatio)),
             $popScore >= ($hotScore * 0.85) && $hasStars => \sprintf('Hype wave • %s %s • %s', $stars, $starLabel, $ageLabel),
             $hasStars => \sprintf('Heat check • %s %s + %s %s', $stars, $starLabel, $recentCommits, $commitLabel),
             default => \sprintf('%s %s over %d %s', $recentCommits, $commitLabel, $weeks, $weekLabel),
@@ -552,7 +552,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
     /**
      * @param array{
-     *     annualCommits: int,
+     *     averageWeeklyCommits: int,
      *     activeWeeks: int
      * } $context
      *
@@ -560,15 +560,12 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      */
     private function buildActivityHighlight(array $context): array
     {
-        $activeWeeks = max(0, $context['activeWeeks']);
-        $weeklyAverage = $context['annualCommits'] > 0 ? $context['annualCommits'] / 52 : 0;
-
         return [
             'type' => 'activity',
             'message' => \sprintf(
                 'Steady cadence • %d/52w active • %s per week',
-                $activeWeeks,
-                $this->formatDecimal($weeklyAverage)
+                $context['activeWeeks'],
+                $this->formatCompactNumber($context['averageWeeklyCommits'])
             ),
             'component' => null,
         ];
@@ -595,8 +592,12 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         ];
     }
 
-    private function formatCompactNumber(int $value): string
+    private function formatCompactNumber(float $value): string
     {
+        if ($value <= 0) {
+            return '0';
+        }
+
         if ($value >= 1000000) {
             return $this->trimTrailingZeros(\sprintf('%.1f', $value / 1000000)).'m';
         }
@@ -605,10 +606,10 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             return $this->trimTrailingZeros(\sprintf('%.1f', $value / 1000)).'k';
         }
 
-        return (string) $value;
+        return (string) round($value);
     }
 
-    private function formatDecimal(float $value, int $precision = 1): string
+    private function formatDecimal(float $value, int $precision = 0): string
     {
         if ($value <= 0.0) {
             return '0';
@@ -634,7 +635,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         }
 
         if ($years >= 2) {
-            return \sprintf('%s years', $this->formatDecimal($years));
+            return \sprintf('%s years', $this->formatDecimal($years, 1));
         }
 
         if ($years >= 1) {
