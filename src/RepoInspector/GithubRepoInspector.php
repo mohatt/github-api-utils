@@ -35,8 +35,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     private const POPULARITY_FORK_REF = 10000;
 
     private const HOT_RECENT_WEEKS = 4;
-    private const HOT_PUSH_HALF_LIFE_WEEKS = 4.0;
-    private const HOT_TREND_DECAY_WEEKS = 250.0;
+    private const HOT_PUSH_HALF_LIFE_WEEKS = 4;
+    private const HOT_TREND_DECAY_WEEKS = 250;
 
     private const ACTIVITY_ANNUAL_COMMITS_REF = 1200;
 
@@ -45,6 +45,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     private const MATURITY_CONTRIBUTORS_REF = 200;
     private const MATURITY_AGE_REF_WEEKS = 52 * 4;
     private const MATURITY_SIZE_REF = 500;
+
+    private const HOT_HIGHLIGHT_STAR_THRESHOLD = 500;
 
     protected HttpMethodsClient $http;
 
@@ -62,6 +64,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      * The payload mirrors the GitHub repo JSON with URLs stripped plus:
      *  - scores.p/h/a/m : integer PHAM scores (unbounded, ~1000 marks the reference profile described in the class docs).
      *  - scores_avg     : integer average of popularity/activity/maturity.
+     *  - highlight      : associative array with the leading metric (`type`), a concise narrative (`message`), and an optional maturity `component`.
      *
      * @return array<string, mixed>
      */
@@ -99,7 +102,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $participationAll = $participation['all'];
         }
 
-        $tdCreatedWeeks = max(0.0, ($now - strtotime($repo['created_at'])) / 604800);
+        $tdCreatedWeeks = max(0, ($now - strtotime($repo['created_at'])) / 604800);
         $weeksSincePush = $this->weeksSince($repo['pushed_at'] ?? ($repo['updated_at'] ?? null), $now);
         $recentCommits = $this->sumRecentWeeks($participationAll, self::HOT_RECENT_WEEKS);
         $annualCommits = array_sum($participationAll);
@@ -116,13 +119,10 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
         $averageWeeklyCommits = $annualCommits > 0 ? $annualCommits / 52 : 0;
         $baselineRecent = max(1.0, $averageWeeklyCommits * self::HOT_RECENT_WEEKS);
-        $momentumRatio = $baselineRecent > 0 ? $recentCommits / $baselineRecent : 0.0;
-        $momentumFactor = $momentumRatio > 0 ? log1p($momentumRatio) : 0.0;
+        $momentumRatio = $baselineRecent > 0 ? $recentCommits / $baselineRecent : 0;
+        $momentumFactor = $momentumRatio > 0 ? log1p($momentumRatio) : 0;
 
-        $agePenalty = 1.0;
-        if (self::HOT_TREND_DECAY_WEEKS > 0.0) {
-            $agePenalty = 1 / (1 + ($tdCreatedWeeks / self::HOT_TREND_DECAY_WEEKS));
-        }
+        $agePenalty = 1 / (1 + ($tdCreatedWeeks / self::HOT_TREND_DECAY_WEEKS));
         $hotScore = 100 * (
             (1.5 * $recencyScore)
             + (1.5 * $momentumFactor)
@@ -148,6 +148,27 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             + 1.5 * $ageScore
             + 0.5 * $sizeScore
         );
+
+        $highlight = $this->buildHighlight([
+            'scores' => [
+                'popularity' => $popularityScore,
+                'hotness' => $hotScore,
+                'activity' => $activityScore,
+                'maturity' => $maturityScore,
+            ],
+            'stargazers' => $stargazers,
+            'subscribers' => $subscribers,
+            'forks' => $forks,
+            'recentCommits' => $recentCommits,
+            'baselineRecent' => $baselineRecent,
+            'weeksSincePush' => $weeksSincePush,
+            'annualCommits' => $annualCommits,
+            'activeWeeks' => $activeWeeks,
+            'tdCreatedWeeks' => $tdCreatedWeeks,
+            'commits' => $commits,
+            'contributors' => $contributors,
+            'releases' => $releases,
+        ]);
 
         // PHAM score (Popularity, Hotness, Activity, Maturity)
         $scores = array_map(
@@ -177,6 +198,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             'languages' => $languages,
             'scores' => $scores,
             'scores_avg' => $scores_avg,
+            'highlight' => $highlight,
         ]);
     }
 
@@ -284,11 +306,11 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
     private function normalizeLogScale(float $value, float $reference): float
     {
-        if ($value <= 0.0) {
-            return 0.0;
+        if ($value <= 0) {
+            return 0;
         }
 
-        if ($reference <= 0.0) {
+        if ($reference <= 0) {
             return log1p($value);
         }
 
@@ -297,11 +319,11 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
     private function normalizeLinearScale(float $value, float $reference): float
     {
-        if ($value <= 0.0) {
-            return 0.0;
+        if ($value <= 0) {
+            return 0;
         }
 
-        if ($reference <= 0.0) {
+        if ($reference <= 0) {
             return $value;
         }
 
@@ -319,8 +341,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         if (null !== $capRatio) {
             $ratio = min($ratio, $capRatio);
         }
-        if ($ratio <= 0.0) {
-            return 0.0;
+        if ($ratio <= 0) {
+            return 0;
         }
 
         return $ratio ** $exponent;
@@ -328,8 +350,8 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
     private function normalizeSizeScore(float $sizeMb): float
     {
-        if ($sizeMb <= 0.0) {
-            return 0.0;
+        if ($sizeMb <= 0) {
+            return 0;
         }
 
         $reference = max(self::MATURITY_SIZE_REF, 1.0);
@@ -344,18 +366,272 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         return 1.0;
     }
 
+    /**
+     * @param array{
+     *     scores: array{popularity: float, hotness: float, activity: float, maturity: float},
+     *     stargazers: int,
+     *     subscribers: int,
+     *     forks: int,
+     *     recentCommits: int,
+     *     baselineRecent: float,
+     *     weeksSincePush: float,
+     *     annualCommits: int,
+     *     activeWeeks: int,
+     *     tdCreatedWeeks: float,
+     *     commits: int,
+     *     contributors: int,
+     *     releases: int
+     * } $context
+     *
+     * @return array{type: string, message: string, component: ?string}
+     */
+    private function buildHighlight(array $context): array
+    {
+        $dimensionScores = $context['scores'];
+        arsort($dimensionScores);
+        $winningDimension = (string) array_key_first($dimensionScores);
+
+        return match ($winningDimension) {
+            'popularity' => $this->buildPopularityHighlight($context),
+            'hotness' => $this->buildHotnessHighlight($context),
+            'maturity' => $this->buildMaturityHighlight($context),
+            default => $this->buildActivityHighlight($context),
+        };
+    }
+
+    /**
+     * @param array{
+     *     tdCreatedWeeks: float,
+     *     commits: int,
+     *     contributors: int,
+     *     releases: int
+     * } $context
+     *
+     * @return array{component: string, message: string}
+     */
+    private function selectMaturityHighlight(array $context): array
+    {
+        $ageLabel = $this->formatAge($context['tdCreatedWeeks']);
+
+        $componentRatios = [
+            'commits' => $context['commits'] / max(self::MATURITY_COMMITS_REF, 1),
+            'contributors' => $context['contributors'] / max(self::MATURITY_CONTRIBUTORS_REF, 1),
+            'releases' => $context['releases'] / max(self::MATURITY_RELEASES_REF, 1),
+        ];
+
+        arsort($componentRatios);
+        $topComponent = (string) key($componentRatios);
+
+        switch ($topComponent) {
+            case 'contributors':
+                $count = $this->formatCompactNumber($context['contributors']);
+                $message = \sprintf('Deep bench • %s contributors • %s', $count, $ageLabel);
+
+                break;
+
+            case 'releases':
+                $count = $this->formatCompactNumber($context['releases']);
+                $message = \sprintf('Release machine • %s releases • %s', $count, $ageLabel);
+
+                break;
+
+            case 'commits':
+            default:
+                $count = $this->formatCompactNumber($context['commits']);
+                $message = \sprintf('Seasoned code • %s commits • %s', $count, $ageLabel);
+                $topComponent = 'commits';
+
+                break;
+        }
+
+        return [
+            'component' => $topComponent,
+            'message' => $message,
+        ];
+    }
+
+    /**
+     * @param array{
+     *     stargazers: int
+     * } $context
+     *
+     * @return array{type: string, message: string, component: ?string}
+     */
+    private function buildPopularityHighlight(array $context): array
+    {
+        $stars = $this->formatCompactNumber($context['stargazers']);
+
+        return [
+            'type' => 'popularity',
+            'message' => \sprintf('Star magnet • %s stars', $stars),
+            'component' => null,
+        ];
+    }
+
+    /**
+     * @param array{
+     *     scores: array{popularity: float, hotness: float, activity: float, maturity: float},
+     *     recentCommits: int,
+     *     baselineRecent: float,
+     *     weeksSincePush: float,
+     *     stargazers: int,
+     *     tdCreatedWeeks: float
+     * } $context
+     *
+     * @return array{type: string, message: string, component: ?string}
+     */
+    private function buildHotnessHighlight(array $context): array
+    {
+        $recentCommits = $this->formatCompactNumber($context['recentCommits']);
+        $weeks = self::HOT_RECENT_WEEKS;
+        $paceRatio = $context['baselineRecent'] > 0 ? $context['recentCommits'] / $context['baselineRecent'] : 0;
+        $starsCount = max(0, $context['stargazers']);
+        $stars = $this->formatCompactNumber($starsCount);
+        $popScore = $context['scores']['popularity'];
+        $hotScore = $context['scores']['hotness'];
+        $ageWeeks = max(0, $context['tdCreatedWeeks']);
+        $ageLabel = $this->formatAge($ageWeeks);
+        $isYoung = $ageWeeks > 0 && $ageWeeks <= 52;
+        $recentPush = $context['weeksSincePush'] <= 1;
+        $hasStars = $starsCount >= self::HOT_HIGHLIGHT_STAR_THRESHOLD;
+
+        $message = match (true) {
+            $hasStars && $isYoung => \sprintf('Fast climb • %s stars in %s', $stars, $ageLabel),
+            $recentPush && $hasStars => \sprintf('Fresh buzz • %s stars + recent push', $stars),
+            $recentPush => \sprintf('Fresh buzz • %s commits/%dw', $recentCommits, $weeks),
+            $paceRatio >= 1.5 && $hasStars => \sprintf('Momentum spike • %s stars & %sx commits', $stars, $this->formatDecimal($paceRatio)),
+            $paceRatio >= 1.5 => \sprintf('Momentum spike • %sx commits', $this->formatDecimal($paceRatio)),
+            $popScore >= ($hotScore * 0.85) && $hasStars => \sprintf('Hype wave • %s stars • %s', $stars, $ageLabel),
+            $hasStars => \sprintf('Heat check • %s stars + %s commits', $stars, $recentCommits),
+            default => \sprintf('Heat check • %s commits/%dw', $recentCommits, $weeks),
+        };
+
+        return [
+            'type' => 'hotness',
+            'message' => $message,
+            'component' => null,
+        ];
+    }
+
+    /**
+     * @param array{
+     *     annualCommits: int,
+     *     activeWeeks: int
+     * } $context
+     *
+     * @return array{type: string, message: string, component: ?string}
+     */
+    private function buildActivityHighlight(array $context): array
+    {
+        $activeWeeks = max(0, $context['activeWeeks']);
+        $weeklyAverage = $context['annualCommits'] > 0 ? $context['annualCommits'] / 52 : 0;
+
+        return [
+            'type' => 'activity',
+            'message' => \sprintf(
+                'Steady cadence • %d/52w active, %s/w',
+                $activeWeeks,
+                $this->formatDecimal($weeklyAverage)
+            ),
+            'component' => null,
+        ];
+    }
+
+    /**
+     * @param array{
+     *     tdCreatedWeeks: float,
+     *     commits: int,
+     *     contributors: int,
+     *     releases: int
+     * } $context
+     *
+     * @return array{type: string, message: string, component: ?string}
+     */
+    private function buildMaturityHighlight(array $context): array
+    {
+        $maturityComponent = $this->selectMaturityHighlight($context);
+
+        return [
+            'type' => 'maturity',
+            'message' => $maturityComponent['message'],
+            'component' => $maturityComponent['component'],
+        ];
+    }
+
+    private function formatCompactNumber(int $value): string
+    {
+        if ($value >= 1000000) {
+            return $this->trimTrailingZeros(\sprintf('%.1f', $value / 1000000)).'m';
+        }
+
+        if ($value >= 1000) {
+            return $this->trimTrailingZeros(\sprintf('%.1f', $value / 1000)).'k';
+        }
+
+        return (string) $value;
+    }
+
+    private function formatDecimal(float $value, int $precision = 1): string
+    {
+        if ($value <= 0.0) {
+            return '0';
+        }
+
+        return $this->trimTrailingZeros(\sprintf('%.'.$precision.'f', $value));
+    }
+
+    private function trimTrailingZeros(string $value): string
+    {
+        return rtrim(rtrim($value, '0'), '.');
+    }
+
+    private function formatAge(float $weeks): string
+    {
+        if ($weeks <= 0) {
+            return 'less than a week';
+        }
+
+        $years = $weeks / 52;
+        if ($years >= 5) {
+            return \sprintf('%d years', (int) round($years));
+        }
+
+        if ($years >= 2) {
+            return \sprintf('%s years', $this->formatDecimal($years));
+        }
+
+        if ($years >= 1) {
+            $months = (int) round($years * 12);
+
+            return 1 === $months ? '1 month' : \sprintf('%d months', $months);
+        }
+
+        if ($weeks >= 8) {
+            $months = (int) round($weeks / 4.345);
+            $months = max(1, $months);
+
+            return 1 === $months ? '1 month' : \sprintf('%d months', $months);
+        }
+
+        $weeksRounded = (int) round($weeks);
+
+        $weeksRounded = max(1, $weeksRounded);
+
+        return 1 === $weeksRounded ? '1 week' : \sprintf('%d weeks', $weeksRounded);
+    }
+
     private function weeksSince(?string $date, int $now): float
     {
         if (!$date) {
-            return 52.0;
+            return 52;
         }
 
         $timestamp = strtotime($date);
         if (false === $timestamp) {
-            return 52.0;
+            return 52;
         }
 
-        return max(0.0, ($now - $timestamp) / 604800);
+        return max(0, ($now - $timestamp) / 604800);
     }
 
     /**
