@@ -445,9 +445,9 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $ageLabel = $this->formatAge($context['tdCreatedWeeks']);
 
         $componentRatios = [
-            'commits' => $context['commits'] / max(self::MATURITY_COMMITS_REF, 1),
-            'contributors' => $context['contributors'] / max(self::MATURITY_CONTRIBUTORS_REF, 1),
-            'releases' => $context['releases'] / max(self::MATURITY_RELEASES_REF, 1),
+            'commits' => $context['commits'] / self::MATURITY_COMMITS_REF,
+            'contributors' => $context['contributors'] / self::MATURITY_CONTRIBUTORS_REF,
+            'releases' => $context['releases'] / self::MATURITY_RELEASES_REF,
         ];
 
         arsort($componentRatios);
@@ -455,21 +455,39 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
         switch ($topComponent) {
             case 'contributors':
-                $count = $this->formatCompactNumber($context['contributors']);
-                $message = \sprintf('Deep bench • %s contributors • %s', $count, $ageLabel);
+                $contributorsCount = (int) $context['contributors'];
+                $count = $this->formatCompactNumber($contributorsCount);
+                $message = \sprintf(
+                    'Deep bench • %s %s • %s',
+                    $count,
+                    $this->pluralLabel($contributorsCount, 'contributor', 'contributors'),
+                    $ageLabel
+                );
 
                 break;
 
             case 'releases':
-                $count = $this->formatCompactNumber($context['releases']);
-                $message = \sprintf('Release machine • %s releases • %s', $count, $ageLabel);
+                $releasesCount = (int) $context['releases'];
+                $count = $this->formatCompactNumber($releasesCount);
+                $message = \sprintf(
+                    'Release machine • %s %s • %s',
+                    $count,
+                    $this->pluralLabel($releasesCount, 'release', 'releases'),
+                    $ageLabel
+                );
 
                 break;
 
             case 'commits':
             default:
-                $count = $this->formatCompactNumber($context['commits']);
-                $message = \sprintf('Seasoned code • %s commits • %s', $count, $ageLabel);
+                $commitsCount = (int) $context['commits'];
+                $count = $this->formatCompactNumber($commitsCount);
+                $message = \sprintf(
+                    'Seasoned code • %s %s • %s',
+                    $count,
+                    $this->pluralLabel($commitsCount, 'commit', 'commits'),
+                    $ageLabel
+                );
                 $topComponent = 'commits';
 
                 break;
@@ -490,11 +508,16 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      */
     private function buildPopularityHighlight(array $context): array
     {
-        $stars = $this->formatCompactNumber($context['stargazers']);
+        $starsCount = (int) $context['stargazers'];
+        $stars = $this->formatCompactNumber($starsCount);
 
         return [
             'type' => 'popularity',
-            'message' => \sprintf('Star magnet • %s stars', $stars),
+            'message' => \sprintf(
+                'Star magnet • %s %s',
+                $stars,
+                $this->pluralLabel($starsCount, 'star', 'stars')
+            ),
             'component' => null,
         ];
     }
@@ -513,15 +536,15 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      */
     private function buildHotnessHighlight(array $context): ?array
     {
-        $recentCommitsCount = max(0, (int) $context['recentCommits']);
+        $recentCommitsCount = $context['recentCommits'];
         $recentCommits = $this->formatCompactNumber($recentCommitsCount);
-        $commitLabel = 1 === $recentCommitsCount ? 'commit' : 'commits';
+        $commitLabel = $this->pluralLabel($recentCommitsCount, 'commit', 'commits');
         $weeks = self::HOT_RECENT_WEEKS;
-        $weekLabel = 'weeks';
+        $weekLabel = $this->pluralLabel($weeks, 'week', 'weeks');
         $paceRatio = $context['baselineRecent'] > 0 ? $context['recentCommits'] / $context['baselineRecent'] : 0;
         $starsCount = $context['stargazers'];
         $stars = $this->formatCompactNumber($starsCount);
-        $starLabel = 'stars';
+        $starLabel = $this->pluralLabel($starsCount, 'star', 'stars');
         $popScore = $context['scores']['popularity'];
         $hotScore = $context['scores']['hotness'];
         $ageWeeks = $context['tdCreatedWeeks'];
@@ -616,6 +639,11 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         }
 
         return $this->trimTrailingZeros(\sprintf('%.'.$precision.'f', $value));
+    }
+
+    private function pluralLabel(int $count, string $singular, string $plural): string
+    {
+        return 1 === $count ? $singular : $plural;
     }
 
     private function trimTrailingZeros(string $value): string
