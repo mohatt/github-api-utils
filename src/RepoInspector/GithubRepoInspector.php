@@ -18,12 +18,12 @@ use Symfony\Component\DomCrawler;
  * This inspector consolidates GitHub API and scraped HTML metadata into the PHAM
  * score bundle:
  *
- *  • Popularity benchmarks against 50k stars, 5k subscribers, 10k forks (values above those references exceed 100).
- *  • Hotness mixes latest pushes, short-term commit momentum, and popularity; recent surges land around 100, dramatic spikes can exceed it.
+ *  • Popularity benchmarks against 50k stars, 5k subscribers, 10k forks (values above those references exceed 1000).
+ *  • Hotness mixes latest pushes, short-term commit momentum, and popularity; recent surges land around 1000, dramatic spikes can exceed it.
  *  • Activity compares annual commits (1.2k reference) and active weeks (52 reference).
  *  • Maturity weighs total commits (5k), releases (100), contributors (200), age (~4 years), and size (500 MB).
  *
- * Scores are left unbounded for relative sorting, but crossing the reference profile typically yields ≈100.
+ * Scores are left unbounded for relative sorting, but crossing the reference profile typically yields ≈1000.
  */
 class GithubRepoInspector implements GithubRepoInspectorInterface
 {
@@ -60,7 +60,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      * Returns merged repository metadata and scoring metrics.
      *
      * The payload mirrors the GitHub repo JSON with URLs stripped plus:
-     *  - scores.p/h/a/m : integer PHAM scores (unbounded, ~100 marks the reference profile described in the class docs).
+     *  - scores.p/h/a/m : integer PHAM scores (unbounded, ~1000 marks the reference profile described in the class docs).
      *  - scores_avg     : integer average of popularity/activity/maturity.
      *
      * @return array<string, mixed>
@@ -106,9 +106,9 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $activeWeeks = \count(array_filter($participationAll, static fn ($count): bool => (int) $count > 0));
 
         $popularityScore = 100 * (
-            0.6 * $this->normalizeLogScale($stargazers, self::POPULARITY_STAR_REF)
-            + 0.2 * $this->normalizeLogScale($subscribers, self::POPULARITY_SUBSCRIBER_REF)
-            + 0.2 * $this->normalizeLogScale($forks, self::POPULARITY_FORK_REF)
+            6.0 * $this->normalizeLogScale($stargazers, self::POPULARITY_STAR_REF)
+            + 2.0 * $this->normalizeLogScale($subscribers, self::POPULARITY_SUBSCRIBER_REF)
+            + 2.0 * $this->normalizeLogScale($forks, self::POPULARITY_FORK_REF)
         );
 
         $recencyScore = 0.5 ** ($weeksSincePush / self::HOT_PUSH_HALF_LIFE_WEEKS);
@@ -124,29 +124,29 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             $agePenalty = 1 / (1 + ($tdCreatedWeeks / self::HOT_TREND_DECAY_WEEKS));
         }
         $hotScore = 100 * (
-            (0.15 * $recencyScore)
-            + (0.15 * $momentumFactor)
-            + (0.7 * $popularityMomentum)
+            (1.5 * $recencyScore)
+            + (1.5 * $momentumFactor)
+            + (7.0 * $popularityMomentum)
         ) * $agePenalty;
 
         $activityVolumeScore = $this->normalizePowerScale($annualCommits, self::ACTIVITY_ANNUAL_COMMITS_REF, 0.6);
         $consistencyScore = $this->normalizeLinearScale($activeWeeks, 52);
         $activityScore = 100 * (
-            0.65 * $activityVolumeScore
-            + 0.35 * $consistencyScore
+            6.5 * $activityVolumeScore
+            + 3.5 * $consistencyScore
         );
 
-        $commitScore = $this->normalizePowerScale($commits, self::MATURITY_COMMITS_REF, 0.55);
-        $releaseScore = $this->normalizePowerScale($releases, self::MATURITY_RELEASES_REF, 0.45);
-        $contributorScore = $this->normalizePowerScale($contributors, self::MATURITY_CONTRIBUTORS_REF, 0.5);
+        $commitScore = $this->normalizePowerScale($commits, self::MATURITY_COMMITS_REF, 1.2, 3.5);
+        $releaseScore = $this->normalizePowerScale($releases, self::MATURITY_RELEASES_REF, 1.1, 3.0);
+        $contributorScore = $this->normalizePowerScale($contributors, self::MATURITY_CONTRIBUTORS_REF, 1.15, 3.0);
         $ageScore = $this->normalizeLogScale($tdCreatedWeeks, self::MATURITY_AGE_REF_WEEKS);
-        $sizeScore = $this->normalizePowerScale(max($sizeMb, 0), self::MATURITY_SIZE_REF, 0.35);
+        $sizeScore = $this->normalizeSizeScore($sizeMb);
         $maturityScore = 100 * (
-            0.35 * $commitScore
-            + 0.2 * $releaseScore
-            + 0.25 * $contributorScore
-            + 0.15 * $ageScore
-            + 0.05 * $sizeScore
+            3.5 * $commitScore
+            + 2.5 * $contributorScore
+            + 2.0 * $releaseScore
+            + 1.5 * $ageScore
+            + 0.5 * $sizeScore
         );
 
         // PHAM score (Popularity, Hotness, Activity, Maturity)
@@ -308,7 +308,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         return $value / $reference;
     }
 
-    private function normalizePowerScale(float $value, float $reference, float $exponent = 1.0): float
+    private function normalizePowerScale(float $value, float $reference, float $exponent = 1.0, ?float $capRatio = null): float
     {
         if ($value <= 0.0) {
             return 0.0;
@@ -316,11 +316,32 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
         $reference = max($reference, 1.0);
         $ratio = $value / $reference;
+        if (null !== $capRatio) {
+            $ratio = min($ratio, $capRatio);
+        }
         if ($ratio <= 0.0) {
             return 0.0;
         }
 
         return $ratio ** $exponent;
+    }
+
+    private function normalizeSizeScore(float $sizeMb): float
+    {
+        if ($sizeMb <= 0.0) {
+            return 0.0;
+        }
+
+        $reference = max(self::MATURITY_SIZE_REF, 1.0);
+        $ratio = $sizeMb / $reference;
+
+        if ($ratio <= 1.0) {
+            // Smaller projects earn a gentler ramp to avoid over-rewarding tiny repos.
+            return $ratio ** 0.7;
+        }
+
+        // Cap at 1.0 to avoid over-rewarding large repos
+        return 1.0;
     }
 
     private function weeksSince(?string $date, int $now): float
