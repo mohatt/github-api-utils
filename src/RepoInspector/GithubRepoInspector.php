@@ -420,7 +420,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
             if (null !== $highlight) {
                 if ($score < self::HIGHLIGHT_KEYWORD_THRESHOLD) {
                     $highlightSegments = explode(' • ', $highlight['message'], 2);
-                    $highlight['message'] = $highlightSegments[1];
+                    $highlight['message'] = $highlightSegments[1] ?? $highlight['message'];
                 }
 
                 return $highlight;
