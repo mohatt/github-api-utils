@@ -37,6 +37,10 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     private const HOT_RECENT_WEEKS = 4;
     private const HOT_PUSH_HALF_LIFE_WEEKS = 4;
     private const HOT_TREND_DECAY_WEEKS = 250;
+    private const HOT_YOUTH_RAMP_WEEKS = 26;
+    private const HOT_YOUTH_FLOOR = 0.35;
+    private const HOT_POPULARITY_MOMENTUM_SCALE = 400;
+    private const HOT_HIGHLIGHT_STAR_THRESHOLD = 400;
 
     private const ACTIVITY_ANNUAL_COMMITS_REF = 1200;
 
@@ -45,8 +49,6 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     private const MATURITY_CONTRIBUTORS_REF = 200;
     private const MATURITY_AGE_REF_WEEKS = 52 * 4;
     private const MATURITY_SIZE_REF = 500;
-
-    private const HOT_HIGHLIGHT_STAR_THRESHOLD = 500;
 
     protected HttpMethodsClient $http;
 
@@ -115,7 +117,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         );
 
         $recencyScore = 0.5 ** ($weeksSincePush / self::HOT_PUSH_HALF_LIFE_WEEKS);
-        $popularityMomentum = min(1.0, $popularityScore / 100);
+        $popularityMomentum = min(1.0, $popularityScore / max(self::HOT_POPULARITY_MOMENTUM_SCALE, 1));
 
         $averageWeeklyCommits = $annualCommits > 0 ? $annualCommits / 52 : 0;
         $baselineRecent = max(1.0, $averageWeeklyCommits * self::HOT_RECENT_WEEKS);
@@ -123,11 +125,12 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $momentumFactor = $momentumRatio > 0 ? log1p($momentumRatio) : 0;
 
         $agePenalty = 1 / (1 + ($tdCreatedWeeks / self::HOT_TREND_DECAY_WEEKS));
+        $youthDamping = $this->youthDampingFactor($tdCreatedWeeks);
         $hotScore = 100 * (
             (1.5 * $recencyScore)
             + (1.5 * $momentumFactor)
             + (7.0 * $popularityMomentum)
-        ) * $agePenalty;
+        ) * $agePenalty * $youthDamping;
 
         $activityVolumeScore = $this->normalizePowerScale($annualCommits, self::ACTIVITY_ANNUAL_COMMITS_REF, 0.6);
         $consistencyScore = $this->normalizeLinearScale($activeWeeks, 52);
@@ -367,6 +370,20 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     }
 
     /**
+     * Dampens hotness score for very young repositories to avoid runaway spikes.
+     */
+    private function youthDampingFactor(float $ageWeeks): float
+    {
+        if ($ageWeeks <= 0.0) {
+            return self::HOT_YOUTH_FLOOR;
+        }
+
+        $ramp = $ageWeeks / max(self::HOT_YOUTH_RAMP_WEEKS, 1);
+
+        return min(1, max(self::HOT_YOUTH_FLOOR, $ramp));
+    }
+
+    /**
      * @param array{
      *     scores: array{popularity: float, hotness: float, activity: float, maturity: float},
      *     stargazers: int,
@@ -389,14 +406,21 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
     {
         $dimensionScores = $context['scores'];
         arsort($dimensionScores);
-        $winningDimension = (string) array_key_first($dimensionScores);
 
-        return match ($winningDimension) {
-            'popularity' => $this->buildPopularityHighlight($context),
-            'hotness' => $this->buildHotnessHighlight($context),
-            'maturity' => $this->buildMaturityHighlight($context),
-            default => $this->buildActivityHighlight($context),
-        };
+        foreach (array_keys($dimensionScores) as $dimension) {
+            $highlight = match ($dimension) {
+                'popularity' => $this->buildPopularityHighlight($context),
+                'hotness' => $this->buildHotnessHighlight($context),
+                'maturity' => $this->buildMaturityHighlight($context),
+                default => $this->buildActivityHighlight($context),
+            };
+
+            if (null !== $highlight) {
+                return $highlight;
+            }
+        }
+
+        throw new \RuntimeException('Unable to build highlight');
     }
 
     /**
@@ -478,15 +502,19 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
      *     tdCreatedWeeks: float
      * } $context
      *
-     * @return array{type: string, message: string, component: ?string}
+     * @return null|array{type: string, message: string, component: ?string}
      */
-    private function buildHotnessHighlight(array $context): array
+    private function buildHotnessHighlight(array $context): ?array
     {
-        $recentCommits = $this->formatCompactNumber($context['recentCommits']);
+        $recentCommitsCount = max(0, (int) $context['recentCommits']);
+        $recentCommits = $this->formatCompactNumber($recentCommitsCount);
+        $commitLabel = 1 === $recentCommitsCount ? 'commit' : 'commits';
         $weeks = self::HOT_RECENT_WEEKS;
+        $weekLabel = 'weeks';
         $paceRatio = $context['baselineRecent'] > 0 ? $context['recentCommits'] / $context['baselineRecent'] : 0;
         $starsCount = max(0, $context['stargazers']);
         $stars = $this->formatCompactNumber($starsCount);
+        $starLabel = 'stars';
         $popScore = $context['scores']['popularity'];
         $hotScore = $context['scores']['hotness'];
         $ageWeeks = max(0, $context['tdCreatedWeeks']);
@@ -495,15 +523,24 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         $recentPush = $context['weeksSincePush'] <= 1;
         $hasStars = $starsCount >= self::HOT_HIGHLIGHT_STAR_THRESHOLD;
 
+        $shouldSkipHighlight = !$hasStars
+            && !$recentPush
+            && $paceRatio < 1.2
+            && $recentCommitsCount <= $weeks;
+
+        if ($shouldSkipHighlight) {
+            return null;
+        }
+
         $message = match (true) {
-            $hasStars && $isYoung => \sprintf('Fast climb • %s stars in %s', $stars, $ageLabel),
-            $recentPush && $hasStars => \sprintf('Fresh buzz • %s stars + recent push', $stars),
-            $recentPush => \sprintf('Fresh buzz • %s commits/%dw', $recentCommits, $weeks),
-            $paceRatio >= 1.5 && $hasStars => \sprintf('Momentum spike • %s stars & %sx commits', $stars, $this->formatDecimal($paceRatio)),
+            $hasStars && $isYoung => \sprintf('Fast climb • %s %s in %s', $stars, $starLabel, $ageLabel),
+            $recentPush && $hasStars => \sprintf('Fresh buzz • %s %s + recent push', $stars, $starLabel),
+            $recentPush => \sprintf('Fresh buzz • %s %s over %d %s', $recentCommits, $commitLabel, $weeks, $weekLabel),
+            $paceRatio >= 1.5 && $hasStars => \sprintf('Momentum spike • %s %s & %sx commits', $stars, $starLabel, $this->formatDecimal($paceRatio)),
             $paceRatio >= 1.5 => \sprintf('Momentum spike • %sx commits', $this->formatDecimal($paceRatio)),
-            $popScore >= ($hotScore * 0.85) && $hasStars => \sprintf('Hype wave • %s stars • %s', $stars, $ageLabel),
-            $hasStars => \sprintf('Heat check • %s stars + %s commits', $stars, $recentCommits),
-            default => \sprintf('Heat check • %s commits/%dw', $recentCommits, $weeks),
+            $popScore >= ($hotScore * 0.85) && $hasStars => \sprintf('Hype wave • %s %s • %s', $stars, $starLabel, $ageLabel),
+            $hasStars => \sprintf('Heat check • %s %s + %s %s', $stars, $starLabel, $recentCommits, $commitLabel),
+            default => \sprintf('%s %s over %d %s', $recentCommits, $commitLabel, $weeks, $weekLabel),
         };
 
         return [
@@ -529,7 +566,7 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
         return [
             'type' => 'activity',
             'message' => \sprintf(
-                'Steady cadence • %d/52w active, %s/w',
+                'Steady cadence • %d/52w active • %s per week',
                 $activeWeeks,
                 $this->formatDecimal($weeklyAverage)
             ),
