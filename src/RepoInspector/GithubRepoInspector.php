@@ -257,6 +257,17 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
                 }
             });
 
+            // Github lazy loads the main repo view for large repos
+            if (empty($stats['commits'])) {
+                $crawler->filter('script')->each(function ($node) use (&$stats): void {
+                    $matches = [];
+                    $subject = trim($node->text());
+                    if (preg_match('/"commitCount":"([\d,]+)"/', $subject, $matches)) {
+                        $stats['commits'] = $matches[1];
+                    }
+                });
+            }
+
             if (\count($stats) < 5) {
                 throw new \Exception('Unable to extract required fields with DomCrawler');
             }
