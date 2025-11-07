@@ -570,10 +570,10 @@ class GithubRepoInspector implements GithubRepoInspectorInterface
 
         $message = match (true) {
             $hasStars && $isYoung => \sprintf('Fast climb • %s %s in %s', $stars, $starLabel, $ageLabel),
-            $recentPush && $hasStars => \sprintf('Fresh buzz • %s %s + recent push', $stars, $starLabel),
+            $hasStars && $recentPush => \sprintf('Fresh buzz • %s %s + recent push', $stars, $starLabel),
             $recentPush => \sprintf('Fresh buzz • %s %s over %d %s', $recentCommits, $commitLabel, $weeks, $weekLabel),
             $popScore >= ($hotScore * 0.85) && $hasStars => \sprintf('Hype wave • %s %s • %s', $stars, $starLabel, $ageLabel),
-            $hasStars => \sprintf('Heat check • %s %s + %s %s', $stars, $starLabel, $recentCommits, $commitLabel),
+            $hasStars => \sprintf('Heat check • %s %s', $stars, $starLabel),
             default => \sprintf('%s %s over %d %s', $recentCommits, $commitLabel, $weeks, $weekLabel),
         };
 
